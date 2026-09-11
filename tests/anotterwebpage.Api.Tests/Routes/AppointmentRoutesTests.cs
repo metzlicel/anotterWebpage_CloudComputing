@@ -173,6 +173,109 @@ public class AppointmentRoutesTests
         Assert.Contains("\"status\":400", body);
         Assert.Contains("\"id\"", body);
     }
+
+// GetBusy: return 200
+	[Fact]
+public async Task GetBusyAppointments_WhenAppointmentsExist_Returns200WithBusySlots()
+{
+    // Arrange
+    await _factory.ResetDatabaseAsync();
+
+    await _factory.ExecuteDbContextAsync(
+        async context =>
+        {
+            context.Appointments.AddRange(
+                new Appointment
+                {
+                    Id = 1,
+                    Start = new DateTime(
+                        2026, 10, 20, 17, 0, 0,
+                        DateTimeKind.Utc),
+                    End = new DateTime(
+                        2026, 10, 20, 18, 0, 0,
+                        DateTimeKind.Utc),
+                    Nombre = "Metzli",
+                    Apellido = "Lopez",
+                    Email = "metzli@example.com",
+                    Numero = "6641234567",
+                    Motivo = "Consulta",
+                    Modalidad = "Online",
+                    IsReserved = true
+                },
+                new Appointment
+                {
+                    Id = 2,
+                    Start = new DateTime(
+                        2026, 10, 20, 19, 0, 0,
+                        DateTimeKind.Utc),
+                    End = new DateTime(
+                        2026, 10, 20, 20, 0, 0,
+                        DateTimeKind.Utc),
+                    Nombre = "Ana",
+                    Apellido = "Perez",
+                    Email = "ana@example.com",
+                    Numero = "6649999999",
+                    Motivo = "Seguimiento",
+                    Modalidad = "Presencial",
+                    IsReserved = true
+                });
+
+            await context.SaveChangesAsync();
+        });
+
+    var start =
+        "2026-10-20T00:00:00Z";
+
+    var end =
+        "2026-10-21T00:00:00Z";
+
+    // Act
+    var response =
+        await _client.GetAsync(
+            $"/api/appointments/busy?start={start}&end={end}");
+
+    // Assert
+    Assert.Equal(
+        HttpStatusCode.OK,
+        response.StatusCode);
+
+    Assert.Equal(
+        "application/json",
+        response.Content.Headers.ContentType?.MediaType);
+
+    var body =
+        await response.Content.ReadAsStringAsync();
+
+    Assert.Contains("\"id\":1", body);
+    Assert.Contains("\"id\":2", body);
+    Assert.Contains("\"title\":\"Reservado\"", body);
+}
+
+//GetBusy: No appointments returns empty array
+[Fact]
+public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmptyArray()
+{
+    // Arrange
+    await _factory.ResetDatabaseAsync();
+
+    // Act
+    var response =
+        await _client.GetAsync(
+            "/api/appointments/busy" +
+            "?start=2026-10-20T00:00:00Z" +
+            "&end=2026-10-21T00:00:00Z");
+
+    // Assert
+    Assert.Equal(
+        HttpStatusCode.OK,
+        response.StatusCode);
+
+    var body =
+        await response.Content.ReadAsStringAsync();
+
+    Assert.Equal("[]", body);
+}
+
     
     // POST /items` returns 201 + Location | Valid CreateItemDto 
     [Fact]
