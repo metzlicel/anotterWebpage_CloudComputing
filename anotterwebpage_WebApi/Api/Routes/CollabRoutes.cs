@@ -1,6 +1,7 @@
 using FluentValidation;
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Delegate;
+using anotterwebpage_WebApi.Api.Extensions;
 using anotterwebpage_WebApi.Api.Errors;
 
 namespace anotterwebpage_WebApi.Api.Endpoints;
@@ -24,9 +25,9 @@ public static class CollaborationEndpoints
     }
 
     private static async Task<IResult> Create(
-        CreateCollabRequest request,
+        CreateCollabDto request,
         ICollabDelegate collaborationDelegate,
-        IValidator<CreateCollabRequest> validator)
+        IValidator<CreateCollabDto> validator)
     {
         var validationResult =
             await validator.ValidateAsync(request);
@@ -47,7 +48,7 @@ public static class CollaborationEndpoints
 
         return Results.Created(
             $"/api/collaborations/{collaboration.Id}",
-            collaboration);
+            collaboration.ToDto());
     }
     
     private static async Task<IResult> GetAll(
@@ -56,7 +57,8 @@ public static class CollaborationEndpoints
         var collaborations =
             await collabDelegate.GetAllAsync();
 
-        return Results.Ok(collaborations);
+        return Results.Ok(
+            collaborations.Select(c => c.ToDto()).ToList());
     }
     
     private static async Task<IResult> GetById(
@@ -72,14 +74,14 @@ public static class CollaborationEndpoints
                 "Collaboration not found.");
         }
 
-        return Results.Ok(collaboration);
+        return Results.Ok(collaboration.ToDto());
     }
     
     private static async Task<IResult> Update(
         int id,
-        UpdateCollabRequest request,
+        UpdateCollabDto request,
         ICollabDelegate collabDelegate,
-        IValidator<UpdateCollabRequest> validator)
+        IValidator<UpdateCollabDto> validator)
     {
         var validationResult =
             await validator.ValidateAsync(request);
@@ -95,16 +97,16 @@ public static class CollaborationEndpoints
             return ApiErrorResults.Validation(errors);
         }
 
-        var collab =
+        var collaboration =
             await collabDelegate.UpdateAsync(id, request);
 
-        if (collab == null)
+        if (collaboration == null)
         {
             return ApiErrorResults.NotFound(
                 "Collaboration not found.");
         }
 
-        return Results.Ok(collab);
+        return Results.Ok(collaboration.ToDto());
     }
     
     private static async Task<IResult> Delete(

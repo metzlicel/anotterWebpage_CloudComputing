@@ -1,4 +1,4 @@
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Domain;
 using anotterwebpage_WebApi.Repositories;
 using anotterwebpage_WebApi.Services;
@@ -19,7 +19,7 @@ public class CollabDelegate : ICollabDelegate
     }
 
     public async Task<Collab> CreateAsync(
-        CreateCollabRequest request)
+        CreateCollabDto request)
     {
         var collaboration = new Collab
         {
@@ -50,7 +50,7 @@ public class CollabDelegate : ICollabDelegate
 
     public async Task<Collab?> UpdateAsync(
         int id,
-        UpdateCollabRequest request)
+        UpdateCollabDto request)
     {
         var collab = await _repository.GetByIdAsync(id);
 

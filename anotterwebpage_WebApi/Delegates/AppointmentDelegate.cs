@@ -1,4 +1,4 @@
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Domain;
 using anotterwebpage_WebApi.Repositories;
 using anotterwebpage_WebApi.Services;
@@ -24,7 +24,7 @@ public class AppointmentDelegate : IAppointmentDelegate
     }    
     public async Task<Appointment?> UpdateAsync(
         int id,
-        UpdateAppointmentRequest request,
+        UpdateAppointmentDto request,
         string? userId)
     {
         var appointment =
@@ -86,7 +86,7 @@ public class AppointmentDelegate : IAppointmentDelegate
     }
 
     public async Task<Appointment> BookAsync(
-        BookAppointmentRequest request,
+        CreateAppointmentDto request,
         string? userId)
     {
         var overlap = await _repository.HasOverlapAsync(

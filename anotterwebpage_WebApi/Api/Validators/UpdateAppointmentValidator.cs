@@ -1,10 +1,10 @@
 using FluentValidation;
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 
 namespace anotterwebpage_WebApi.Api.Validators;
 
 public class UpdateAppointmentValidator
-    : AbstractValidator<UpdateAppointmentRequest>
+    : AbstractValidator<UpdateAppointmentDto>
 {
     public UpdateAppointmentValidator()
     {

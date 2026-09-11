@@ -1,11 +1,13 @@
 using System.Security.Claims;
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Api.Errors;
+using anotterwebpage_WebApi.Api.Extensions;
 using FluentValidation;
+
 namespace anotterwebpage_WebApi.Api.Endpoints;
 
-public static class AppointmentEndpoints
+public static class AppointmentRoutes
 {
     public static RouteGroupBuilder MapAppointmentEndpoints(
         this IEndpointRouteBuilder routes)
@@ -36,7 +38,8 @@ public static class AppointmentEndpoints
         var appointments =
             await appointmentDelegate.GetAllAsync();
 
-        return Results.Ok(appointments);
+        return Results.Ok(
+            appointments.Select(a => a.ToDto()).ToList());
     }
     
     private static async Task<IResult> GetBusy(
@@ -74,22 +77,14 @@ public static class AppointmentEndpoints
         if (appointment == null)
             return ApiErrorResults.NotFound("Appointment not found.");
 
-        return Results.Ok(new
-        {
-            appointment.Nombre,
-            appointment.Apellido,
-            appointment.Email,
-            appointment.Numero,
-            appointment.Motivo,
-            appointment.Modalidad
-        });
+        return Results.Ok(appointment.ToDto());
     }
 
     private static async Task<IResult> Book(
-        BookAppointmentRequest request,
+        CreateAppointmentDto request,
         ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate,
-        IValidator<BookAppointmentRequest> validator)
+        IValidator<CreateAppointmentDto> validator)
     {
         var validationResult =
             await validator.ValidateAsync(request);
@@ -117,7 +112,7 @@ public static class AppointmentEndpoints
 
             return Results.Created(
                 $"/api/appointments/{appointment.Id}",
-                appointment);
+                appointment.ToDto());
         }
         catch (InvalidOperationException ex)
         {
@@ -127,10 +122,10 @@ public static class AppointmentEndpoints
     
     private static async Task<IResult> Update(
         int id,
-        UpdateAppointmentRequest request,
+        UpdateAppointmentDto request,
         ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate,
-        IValidator<UpdateAppointmentRequest> validator)
+        IValidator<UpdateAppointmentDto> validator)
     {
         var validationResult =
             await validator.ValidateAsync(request);
@@ -163,7 +158,7 @@ public static class AppointmentEndpoints
                     "Appointment not found.");
             }
 
-            return Results.Ok(appointment);
+            return Results.Ok(appointment.ToDto());
         }
         catch (InvalidOperationException ex)
         {

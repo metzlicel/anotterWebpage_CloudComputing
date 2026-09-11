@@ -1,4 +1,4 @@
-using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Domain;
 
 namespace anotterwebpage_WebApi.Delegate;
@@ -15,12 +15,12 @@ public interface IAppointmentDelegate
         string? userId);
 
     Task<Appointment> BookAsync(
-        BookAppointmentRequest request,
+        CreateAppointmentDto request,
         string? userId);
     
     Task<Appointment?> UpdateAsync(
         int id,
-        UpdateAppointmentRequest request,
+        UpdateAppointmentDto request,
         string? userId);
     
     Task<bool> DeleteAsync(

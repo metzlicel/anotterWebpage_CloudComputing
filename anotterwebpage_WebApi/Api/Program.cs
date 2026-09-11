@@ -7,6 +7,8 @@ using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Repositories;
 using anotterwebpage_WebApi.Services;
 using anotterwebpage_WebApi.Api.Validators;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,16 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+//SYSTEM.TEXT.JSON
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.PropertyNamingPolicy =
+        JsonNamingPolicy.CamelCase;
+
+    options.SerializerOptions.Converters.Add(
+        new JsonStringEnumConverter());
+});
 
 // IDENTITY
 builder.Services
