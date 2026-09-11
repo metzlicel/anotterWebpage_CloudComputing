@@ -1,0 +1,15 @@
+# Comentario: Ignora archivos de compilación y dependencias para repos .NET / VS
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.swp
+.env
+.env.*
+.idea/
+*.db-shm
+*.db-wal
+# Artefactos locales
+*.DS_Store
+Thumbs.db

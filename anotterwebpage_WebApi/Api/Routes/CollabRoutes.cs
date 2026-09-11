@@ -17,9 +17,9 @@ public static class CollaborationEndpoints
 
         group.MapPost("/", Create);
         group.MapGet("/", GetAll);
-        group.MapGet("/{id:int}", GetById);
-        group.MapPut("/{id:int}", Update);
-        group.MapDelete("/{id:int}", Delete);
+        group.MapGet("/{id}", GetById);
+        group.MapPut("/{id}", Update);
+        group.MapDelete("/{id}", Delete);
         
         return group;
     }
@@ -62,27 +62,54 @@ public static class CollaborationEndpoints
     }
     
     private static async Task<IResult> GetById(
-        int id,
+        string id,
         ICollabDelegate collabDelegate)
     {
-        var collaboration =
-            await collabDelegate.GetByIdAsync(id);
+        if (!int.TryParse(id, out var collabId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
 
-        if (collaboration == null)
+            return ApiErrorResults.Validation(errors);
+        }
+
+        var collab =
+            await collabDelegate.GetByIdAsync(collabId);
+
+        if (collab == null)
         {
             return ApiErrorResults.NotFound(
                 "Collaboration not found.");
         }
 
-        return Results.Ok(collaboration.ToDto());
+        return Results.Ok(
+            collab.ToDto());
     }
     
     private static async Task<IResult> Update(
-        int id,
+        string id,
         UpdateCollabDto request,
         ICollabDelegate collabDelegate,
         IValidator<UpdateCollabDto> validator)
     {
+        if (!int.TryParse(id, out var collabId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var validationResult =
             await validator.ValidateAsync(request);
 
@@ -98,7 +125,9 @@ public static class CollaborationEndpoints
         }
 
         var collaboration =
-            await collabDelegate.UpdateAsync(id, request);
+            await collabDelegate.UpdateAsync(
+                collabId,
+                request);
 
         if (collaboration == null)
         {
@@ -106,15 +135,29 @@ public static class CollaborationEndpoints
                 "Collaboration not found.");
         }
 
-        return Results.Ok(collaboration.ToDto());
+        return Results.Ok(
+            collaboration.ToDto());
     }
     
     private static async Task<IResult> Delete(
-        int id,
+        string id,
         ICollabDelegate collabDelegate)
     {
+        if (!int.TryParse(id, out var collabId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var deleted =
-            await collabDelegate.DeleteAsync(id);
+            await collabDelegate.DeleteAsync(collabId);
 
         if (!deleted)
         {

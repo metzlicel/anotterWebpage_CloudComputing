@@ -19,15 +19,15 @@ public static class AppointmentRoutes
         
         group.MapGet("/busy", GetBusy);
 
-        group.MapGet("/{id:int}", GetAppointment);
-           // .RequireAuthorization();
+        group.MapGet("/{id}", GetAppointment);           // .RequireAuthorization();
 
         group.MapPost("/", Book);
             //.RequireAuthorization();
             
-        group.MapPut("/{id:int}", Update);
+        group.MapPut("/{id}", Update);
 
-        group.MapDelete("/{id:int}", Delete);
+
+        group.MapDelete("/{id}", Delete);
         
         return group;
     }
@@ -62,22 +62,39 @@ public static class AppointmentRoutes
     }
 
     private static async Task<IResult> GetAppointment(
-        int id,
+        string id,
         ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate)
     {
+        if (!int.TryParse(id, out var appointmentId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var userId =
             user.FindFirstValue(ClaimTypes.NameIdentifier);
 
         var appointment =
             await appointmentDelegate.GetAppointmentAsync(
-                id,
+                appointmentId,
                 userId);
 
         if (appointment == null)
-            return ApiErrorResults.NotFound("Appointment not found.");
+        {
+            return ApiErrorResults.NotFound(
+                "Appointment not found.");
+        }
 
-        return Results.Ok(appointment.ToDto());
+        return Results.Ok(
+            appointment.ToDto());
     }
 
     private static async Task<IResult> Book(
@@ -121,12 +138,25 @@ public static class AppointmentRoutes
     }
     
     private static async Task<IResult> Update(
-        int id,
+        string id,
         UpdateAppointmentDto request,
         ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate,
         IValidator<UpdateAppointmentDto> validator)
     {
+        if (!int.TryParse(id, out var appointmentId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var validationResult =
             await validator.ValidateAsync(request);
 
@@ -148,7 +178,7 @@ public static class AppointmentRoutes
         {
             var appointment =
                 await appointmentDelegate.UpdateAsync(
-                    id,
+                    appointmentId,
                     request,
                     userId);
 
@@ -158,7 +188,8 @@ public static class AppointmentRoutes
                     "Appointment not found.");
             }
 
-            return Results.Ok(appointment.ToDto());
+            return Results.Ok(
+                appointment.ToDto());
         }
         catch (InvalidOperationException ex)
         {
@@ -168,16 +199,29 @@ public static class AppointmentRoutes
     }
     
     private static async Task<IResult> Delete(
-        int id,
+        string id,
         ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate)
     {
+        if (!int.TryParse(id, out var appointmentId))
+        {
+            var errors = new Dictionary<string, string[]>
+            {
+                ["id"] = new[]
+                {
+                    "El formato del ID no es válido."
+                }
+            };
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var userId =
             user.FindFirstValue(ClaimTypes.NameIdentifier);
 
         var deleted =
             await appointmentDelegate.DeleteAsync(
-                id,
+                appointmentId,
                 userId);
 
         if (!deleted)
