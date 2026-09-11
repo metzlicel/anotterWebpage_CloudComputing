@@ -8,11 +8,11 @@ namespace anotterwebpage_WebApi.Delegate;
 public class AppointmentDelegate : IAppointmentDelegate
 {
     private readonly IAppointmentRepository _repository;
-    private readonly EmailService _email;
+    private readonly IEmailService _email;
 
     public AppointmentDelegate(
         IAppointmentRepository repository,
-        EmailService email)
+        IEmailService email)
     {
         _repository = repository;
         _email = email;

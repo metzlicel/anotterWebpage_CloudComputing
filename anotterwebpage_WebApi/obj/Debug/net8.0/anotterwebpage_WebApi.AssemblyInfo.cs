@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("anotterwebpage_WebApi")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8f99b672de7bb6053f580a03f626e4324a56abeb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+94ec02f64daf72aeafa240157e0546b4a75af5e0")]
 [assembly: System.Reflection.AssemblyProductAttribute("anotterwebpage_WebApi")]
 [assembly: System.Reflection.AssemblyTitleAttribute("anotterwebpage_WebApi")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

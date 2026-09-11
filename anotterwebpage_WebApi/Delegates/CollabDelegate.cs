@@ -8,11 +8,11 @@ namespace anotterwebpage_WebApi.Delegate;
 public class CollabDelegate : ICollabDelegate
 {
     private readonly ICollabRepository _repository;
-    private readonly EmailService _email;
+    private readonly IEmailService _email;
 
     public CollabDelegate(
         ICollabRepository repository,
-        EmailService email)
+        IEmailService email)
     {
         _repository = repository;
         _email = email;

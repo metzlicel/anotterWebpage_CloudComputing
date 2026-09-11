@@ -56,8 +56,7 @@ builder.Services.AddScoped<IAppointmentDelegate, AppointmentDelegate>();
 builder.Services.AddScoped<ICollabDelegate, CollabDelegate>();
 
 // SERVICES 
-builder.Services.AddScoped<EmailService>();
-
+builder.Services.AddScoped<IEmailService, EmailService>();
 // VALIDATORS
 builder.Services.AddValidatorsFromAssemblyContaining<BookAppointmentValidator>();
 
