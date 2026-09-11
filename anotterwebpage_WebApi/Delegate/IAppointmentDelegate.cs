@@ -5,6 +5,7 @@ namespace anotterwebpage_WebApi.Delegate;
 
 public interface IAppointmentDelegate
 {
+    Task<List<Appointment>> GetAllAsync();
     Task<List<Appointment>> GetBusyAsync(
         DateTime start,
         DateTime end);
@@ -15,5 +16,14 @@ public interface IAppointmentDelegate
 
     Task<Appointment> BookAsync(
         BookAppointmentRequest request,
+        string? userId);
+    
+    Task<Appointment?> UpdateAsync(
+        int id,
+        UpdateAppointmentRequest request,
+        string? userId);
+    
+    Task<bool> DeleteAsync(
+        int id,
         string? userId);
 }

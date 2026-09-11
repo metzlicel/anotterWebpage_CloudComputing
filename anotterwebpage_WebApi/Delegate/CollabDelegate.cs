@@ -37,7 +37,48 @@ public class CollabDelegate : ICollabDelegate
 
         return collaboration;
     }
+    
+    public async Task<List<Collab>> GetAllAsync()
+    {
+        return await _repository.GetAllAsync();
+    }
+    
+    public async Task<Collab?> GetByIdAsync(int id)
+    {
+        return await _repository.GetByIdAsync(id);
+    }
 
+    public async Task<Collab?> UpdateAsync(
+        int id,
+        UpdateCollabRequest request)
+    {
+        var collab = await _repository.GetByIdAsync(id);
+
+        if (collab == null)
+            return null;
+
+        collab.Nombre = request.Nombre;
+        collab.Apellido = request.Apellido;
+        collab.NombreOrg = request.NombreOrg;
+        collab.Email = request.Email;
+        collab.Numero = request.Numero;
+        collab.Motivo = request.Motivo;
+
+        return await _repository.UpdateAsync(collab);
+    }
+    
+    public async Task<bool> DeleteAsync(int id)
+    {
+        var collab = await _repository.GetByIdAsync(id);
+
+        if (collab == null)
+            return false;
+
+        await _repository.DeleteAsync(collab);
+
+        return true;
+    }
+    
     private async Task SendEmailsAsync(Collab collaboration)
     {
         var adminEmail = "metzli.lopez@cetys.edu.mx";

@@ -13,6 +13,8 @@ public static class AppointmentEndpoints
         var group = routes.MapGroup("/api/appointments")
             .WithTags("Appointments");
 
+        group.MapGet("/", GetAll);
+        
         group.MapGet("/busy", GetBusy);
 
         group.MapGet("/{id:int}", GetAppointment);
@@ -20,10 +22,23 @@ public static class AppointmentEndpoints
 
         group.MapPost("/", Book);
             //.RequireAuthorization();
+            
+        group.MapPut("/{id:int}", Update);
 
+        group.MapDelete("/{id:int}", Delete);
+        
         return group;
     }
 
+    private static async Task<IResult> GetAll(
+        IAppointmentDelegate appointmentDelegate)
+    {
+        var appointments =
+            await appointmentDelegate.GetAllAsync();
+
+        return Results.Ok(appointments);
+    }
+    
     private static async Task<IResult> GetBusy(
         DateTime start,
         DateTime end,
@@ -108,5 +123,74 @@ public static class AppointmentEndpoints
         {
             return ApiErrorResults.BusinessViolation(ex.Message);
         }
+    }
+    
+    private static async Task<IResult> Update(
+        int id,
+        UpdateAppointmentRequest request,
+        ClaimsPrincipal user,
+        IAppointmentDelegate appointmentDelegate,
+        IValidator<UpdateAppointmentRequest> validator)
+    {
+        var validationResult =
+            await validator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToArray());
+
+            return ApiErrorResults.Validation(errors);
+        }
+
+        var userId =
+            user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        try
+        {
+            var appointment =
+                await appointmentDelegate.UpdateAsync(
+                    id,
+                    request,
+                    userId);
+
+            if (appointment == null)
+            {
+                return ApiErrorResults.NotFound(
+                    "Appointment not found.");
+            }
+
+            return Results.Ok(appointment);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ApiErrorResults.BusinessViolation(
+                ex.Message);
+        }
+    }
+    
+    private static async Task<IResult> Delete(
+        int id,
+        ClaimsPrincipal user,
+        IAppointmentDelegate appointmentDelegate)
+    {
+        var userId =
+            user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var deleted =
+            await appointmentDelegate.DeleteAsync(
+                id,
+                userId);
+
+        if (!deleted)
+        {
+            return ApiErrorResults.NotFound(
+                "Appointment not found.");
+        }
+
+        return Results.NoContent();
     }
 }

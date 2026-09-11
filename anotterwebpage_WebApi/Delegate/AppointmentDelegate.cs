@@ -17,6 +17,50 @@ public class AppointmentDelegate : IAppointmentDelegate
         _repository = repository;
         _email = email;
     }
+    
+    public async Task<List<Appointment>> GetAllAsync()
+    {
+        return await _repository.GetAllAsync();
+    }    
+    public async Task<Appointment?> UpdateAsync(
+        int id,
+        UpdateAppointmentRequest request,
+        string? userId)
+    {
+        var appointment =
+            await _repository.GetByIdAsync(id);
+
+        if (appointment == null)
+            return null;
+
+        if (appointment.UserId != userId)
+            return null;
+
+        var overlap =
+            await _repository.HasOverlapAsync(
+                request.Start,
+                request.End,
+                id);
+
+        if (overlap)
+        {
+            throw new InvalidOperationException(
+                "Ese horario ya está reservado.");
+        }
+
+        appointment.Start = request.Start;
+        appointment.End = request.End;
+        appointment.Nombre = request.Nombre;
+        appointment.Apellido = request.Apellido;
+        appointment.NombrePaciente = request.NombrePaciente;
+        appointment.Email = request.Email;
+        appointment.Numero = request.Numero;
+        appointment.Motivo = request.Motivo;
+        appointment.Modalidad = request.Modalidad;
+
+        return await _repository.UpdateAsync(appointment);
+    }
+    
 
     public async Task<List<Appointment>> GetBusyAsync(
         DateTime start,
@@ -77,6 +121,24 @@ public class AppointmentDelegate : IAppointmentDelegate
         return appointment;
     }
 
+    public async Task<bool> DeleteAsync(
+        int id,
+        string? userId)
+    {
+        var appointment =
+            await _repository.GetByIdAsync(id);
+
+        if (appointment == null)
+            return false;
+
+        if (appointment.UserId != userId)
+            return false;
+
+        await _repository.DeleteAsync(appointment);
+
+        return true;
+    }
+    
     private async Task SendEmailsAsync(Appointment appointment)
     {
         var adminEmail = "metzli.lopez@cetys.edu.mx";
