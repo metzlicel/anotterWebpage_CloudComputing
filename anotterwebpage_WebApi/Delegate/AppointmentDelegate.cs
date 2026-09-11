@@ -72,7 +72,7 @@ public class AppointmentDelegate : IAppointmentDelegate
 
         await _repository.CreateAsync(appointment);
 
-        await SendEmailsAsync(appointment);
+        //await SendEmailsAsync(appointment);
 
         return appointment;
     }

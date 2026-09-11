@@ -1,7 +1,8 @@
 using System.Security.Claims;
 using anotterwebpage_WebApi.Api.Requests;
 using anotterwebpage_WebApi.Delegate;
-
+using anotterwebpage_WebApi.Api.Errors;
+using FluentValidation;
 namespace anotterwebpage_WebApi.Api.Endpoints;
 
 public static class AppointmentEndpoints
@@ -14,11 +15,11 @@ public static class AppointmentEndpoints
 
         group.MapGet("/busy", GetBusy);
 
-        group.MapGet("/{id:int}", GetAppointment)
-            .RequireAuthorization();
+        group.MapGet("/{id:int}", GetAppointment);
+           // .RequireAuthorization();
 
-        group.MapPost("/", Book)
-            .RequireAuthorization();
+        group.MapPost("/", Book);
+            //.RequireAuthorization();
 
         return group;
     }
@@ -56,7 +57,7 @@ public static class AppointmentEndpoints
                 userId);
 
         if (appointment == null)
-            return Results.NotFound();
+            return ApiErrorResults.NotFound("Appointment not found.");
 
         return Results.Ok(new
         {
@@ -72,8 +73,23 @@ public static class AppointmentEndpoints
     private static async Task<IResult> Book(
         BookAppointmentRequest request,
         ClaimsPrincipal user,
-        IAppointmentDelegate appointmentDelegate)
+        IAppointmentDelegate appointmentDelegate,
+        IValidator<BookAppointmentRequest> validator)
     {
+        var validationResult =
+            await validator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToArray());
+
+            return ApiErrorResults.Validation(errors);
+        }
+
         var userId =
             user.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -90,10 +106,7 @@ public static class AppointmentEndpoints
         }
         catch (InvalidOperationException ex)
         {
-            return Results.Conflict(new
-            {
-                message = ex.Message
-            });
+            return ApiErrorResults.BusinessViolation(ex.Message);
         }
     }
 }

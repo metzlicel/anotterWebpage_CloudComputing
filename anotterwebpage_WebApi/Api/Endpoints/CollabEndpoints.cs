@@ -1,5 +1,6 @@
-using anotterwebpage_WebApi.Delegate;
+using FluentValidation;
 using anotterwebpage_WebApi.Api.Requests;
+using anotterwebpage_WebApi.Delegate;
 
 namespace anotterwebpage_WebApi.Api.Endpoints;
 
@@ -19,8 +20,23 @@ public static class CollaborationEndpoints
 
     private static async Task<IResult> Create(
         CreateCollabRequest request,
-        ICollabDelegate collaborationDelegate)
+        ICollabDelegate collaborationDelegate,
+        IValidator<CreateCollabRequest> validator)
     {
+        var validationResult =
+            await validator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
+        {
+            var errors = validationResult.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToArray());
+
+            return Results.ValidationProblem(errors);
+        }
+
         var collaboration =
             await collaborationDelegate.CreateAsync(request);
 

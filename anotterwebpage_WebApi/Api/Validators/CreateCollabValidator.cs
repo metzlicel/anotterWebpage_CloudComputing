@@ -3,10 +3,10 @@ using anotterwebpage_WebApi.Api.Requests;
 
 namespace anotterwebpage_WebApi.Api.Validators;
 
-public class BookAppointmentValidator
-    : AbstractValidator<BookAppointmentRequest>
+public class CreateCollabValidator 
+    : AbstractValidator<CreateCollabRequest>
 {
-    public BookAppointmentValidator()
+    public CreateCollabValidator()
     {
         RuleFor(x => x.Nombre)
             .NotEmpty();
@@ -21,13 +21,7 @@ public class BookAppointmentValidator
         RuleFor(x => x.Numero)
             .NotEmpty();
 
-        RuleFor(x => x.Modalidad)
+        RuleFor(x => x.Motivo)
             .NotEmpty();
-
-        RuleFor(x => x.End)
-            .NotEmpty()
-            .GreaterThan(x => x.Start)
-            .WithMessage(
-                "La fecha final debe ser posterior a la inicial.");
     }
 }

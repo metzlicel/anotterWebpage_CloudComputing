@@ -1,17 +1,18 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-
+using FluentValidation;
 using anotterwebpage_WebApi.Api.Endpoints;
 using anotterwebpage_WebApi.Data;
 using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Repositories;
 using anotterwebpage_WebApi.Services;
+using anotterwebpage_WebApi.Api.Validators;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // DATABASE
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(
+    options.UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Add services to the container.
@@ -31,30 +32,22 @@ builder.Services
     })
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
-// REPOSITORIES
-builder.Services.AddScoped<
-    IAppointmentRepository,
-    AppointmentRepository>();
+builder.Services.AddAuthorization();
 
-builder.Services.AddScoped<
-    ICollabRepository,
-    CollabRepository>();
+// REPOSITORIES
+builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+
+builder.Services.AddScoped<ICollabRepository, CollabRepository>();
 
 // DELEGATES 
-builder.Services.AddScoped<
-    IAppointmentDelegate,
-    AppointmentDelegate>();
-
-builder.Services.AddScoped<
-    ICollabDelegate,
-    CollabDelegate>();
+builder.Services.AddScoped<IAppointmentDelegate, AppointmentDelegate>();
+builder.Services.AddScoped<ICollabDelegate, CollabDelegate>();
 
 // SERVICES 
 builder.Services.AddScoped<EmailService>();
 
-// OPEN API/SWAGGER
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// VALIDATORS
+builder.Services.AddValidatorsFromAssemblyContaining<BookAppointmentValidator>();
 
 var app = builder.Build();
 
@@ -76,6 +69,31 @@ app.MapGroup("/api/auth")
 // APPLICATION ENDPOINTS
 app.MapAppointmentEndpoints();
 app.MapCollaborationEndpoints();
+
+app.UseExceptionHandler(exceptionHandlerApp =>
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        context.Response.StatusCode =
+            StatusCodes.Status500InternalServerError;
+
+        context.Response.ContentType = "application/problem+json";
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+            title = "Internal Server Error",
+            status = 500,
+            errors = new Dictionary<string, string[]>
+            {
+                ["server"] = new[]
+                {
+                    "An unexpected error occurred."
+                }
+            }
+        });
+    });
+});
 //
 // var summaries = new[]
 // {
