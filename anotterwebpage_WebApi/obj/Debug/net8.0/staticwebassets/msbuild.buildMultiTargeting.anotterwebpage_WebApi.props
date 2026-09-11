@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="../build/anotterwebpage_WebApi.props" />
+</Project>
