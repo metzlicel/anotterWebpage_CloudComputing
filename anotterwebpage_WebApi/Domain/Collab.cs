@@ -13,7 +13,7 @@ public class Collab
     [EmailAddress]
     public string Email { get; set; } = "";
     public string Numero { get; set; } = "";
-    public string? Motivo { get; set; }
+    public string Motivo { get; set; } = "";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

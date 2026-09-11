@@ -33,7 +33,7 @@ public class CollabDelegate : ICollabDelegate
 
         await _repository.CreateAsync(collaboration);
 
-        //await SendEmailsAsync(collaboration);
+        await SendEmailsAsync(collaboration);
 
         return collaboration;
     }

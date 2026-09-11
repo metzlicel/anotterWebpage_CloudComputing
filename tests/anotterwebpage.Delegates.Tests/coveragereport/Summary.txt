@@ -1,0 +1,49 @@
+Summary
+  Generated on: 11/09/2026 - 3:22:09 p.m.
+  Coverage date: 11/09/2026 - 1:14:55 a.m. - 11/09/2026 - 3:22:06 p.m.
+  Parser: MultiReport (6x Cobertura)
+  Assemblies: 1
+  Classes: 27
+  Files: 22
+  Line coverage: 13.8%
+  Covered lines: 292
+  Uncovered lines: 1819
+  Coverable lines: 2111
+  Total lines: 2492
+  Branch coverage: 21.8% (24 of 110)
+  Covered branches: 24
+  Total branches: 110
+  Method coverage: 43.1% (66 of 153)
+  Full method coverage: 43.1% (66 of 153)
+  Covered methods: 66
+  Fully covered methods: 66
+  Total methods: 153
+
+anotterwebpage_WebApi                                                  13.8%
+  anotterwebpage_WebApi.Api.Dtos.AppointmentDto                           0%
+  anotterwebpage_WebApi.Api.Dtos.CollabDto                                0%
+  anotterwebpage_WebApi.Api.Dtos.CreateAppointmentDto                   100%
+  anotterwebpage_WebApi.Api.Dtos.CreateCollabDto                        100%
+  anotterwebpage_WebApi.Api.Dtos.UpdateAppointmentDto                   100%
+  anotterwebpage_WebApi.Api.Dtos.UpdateCollabDto                        100%
+  anotterwebpage_WebApi.Api.Endpoints.AppointmentRoutes                   0%
+  anotterwebpage_WebApi.Api.Endpoints.CollaborationEndpoints              0%
+  anotterwebpage_WebApi.Api.Errors.ApiErrorResults                        0%
+  anotterwebpage_WebApi.Api.Extensions.MappingExtensions                  0%
+  anotterwebpage_WebApi.Api.Routes.AppointmentRoutes                      0%
+  anotterwebpage_WebApi.Api.Routes.CollaborationRoutes                    0%
+  anotterwebpage_WebApi.Api.Validators.BookAppointmentValidator           0%
+  anotterwebpage_WebApi.Api.Validators.CreateCollabValidator              0%
+  anotterwebpage_WebApi.Api.Validators.UpdateAppointmentValidator         0%
+  anotterwebpage_WebApi.Api.Validators.UpdateCollabValidator              0%
+  anotterwebpage_WebApi.Data.ApplicationDbContext                         0%
+  anotterwebpage_WebApi.Delegate.AppointmentDelegate                    100%
+  anotterwebpage_WebApi.Delegate.CollabDelegate                         100%
+  anotterwebpage_WebApi.Domain.Appointment                              100%
+  anotterwebpage_WebApi.Domain.Collab                                   100%
+  anotterwebpage_WebApi.Migrations.ApplicationDbContextModelSnapshot      0%
+  anotterwebpage_WebApi.Migrations.InitialCreate                          0%
+  anotterwebpage_WebApi.Repositories.AppointmentRepository                0%
+  anotterwebpage_WebApi.Repositories.CollabRepository                     0%
+  anotterwebpage_WebApi.Services.EmailService                             0%
+  Program                                                                 0%

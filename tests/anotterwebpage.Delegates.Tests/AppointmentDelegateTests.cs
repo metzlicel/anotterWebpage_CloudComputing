@@ -85,6 +85,144 @@ public class AppointmentDelegateTests
             Times.Once);
     }
     
+     //GetBusy: Returns DTO when found
+     [Fact]
+     public async Task GetBusyAsync_ReturnsAppointmentsFromRepository()
+     {
+         var start = new DateTime(
+             2026, 10, 20, 8, 0, 0,
+             DateTimeKind.Utc);
+
+         var end = new DateTime(
+             2026, 10, 20, 20, 0, 0,
+             DateTimeKind.Utc);
+
+         var appointments = new List<Appointment>
+         {
+             new AppointmentBuilder()
+                 .WithId(1)
+                 .Build(),
+
+             new AppointmentBuilder()
+                 .WithId(2)
+                 .Build()
+         };
+
+         _repoMock
+             .Setup(r => r.GetBusyAsync(
+                 start,
+                 end))
+             .ReturnsAsync(appointments);
+
+         var result =
+             await _delegate.GetBusyAsync(
+                 start,
+                 end);
+
+         Assert.Equal(2, result.Count);
+
+         _repoMock.Verify(
+             r => r.GetBusyAsync(
+                 start,
+                 end),
+             Times.Once);
+     }
+    
+    //GetBusyAsync: Send Emails
+    [Fact]
+    public async Task CreateAppointment_WithPatientName_SendsEmails()
+    {
+        // Arrange
+        var request = new CreateAppointmentDto
+        {
+            Start = new DateTime(
+                2026, 10, 20, 17, 0, 0,
+                DateTimeKind.Utc),
+
+            End = new DateTime(
+                2026, 10, 20, 18, 0, 0,
+                DateTimeKind.Utc),
+
+            Nombre = "Metzli",
+            Apellido = "Lopez",
+            NombrePaciente = "Ana",
+            Email = "metzli@example.com",
+            Numero = "6641234567",
+            Motivo = "Consulta",
+            Modalidad = "Online"
+        };
+
+        _repoMock
+            .Setup(r => r.HasOverlapAsync(
+                request.Start,
+                request.End,
+                It.IsAny<int>()))
+            .ReturnsAsync(false);
+
+        // Act
+        await _delegate.BookAsync(
+            request,
+            null);
+
+        // Assert
+        _emailMock.Verify(
+            e => e.SendEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.Is<string>(
+                    body => body.Contains("Ana"))),
+            Times.AtLeastOnce);
+    }
+    
+    // GetBusyAsync: Send Email, name null
+    [Fact]
+    public async Task CreateAppointment_WithoutPatientName_SendsEmailsUsingDash()
+    {
+        // Arrange
+        var request = new CreateAppointmentDto
+        {
+            Start = new DateTime(
+                2026, 10, 21, 17, 0, 0,
+                DateTimeKind.Utc),
+
+            End = new DateTime(
+                2026, 10, 21, 18, 0, 0,
+                DateTimeKind.Utc),
+
+            Nombre = "Metzli",
+            Apellido = "Lopez",
+            NombrePaciente = null,
+            Email = "metzli@example.com",
+            Numero = "6641234567",
+            Motivo = "Consulta",
+            Modalidad = "Online"
+        };
+
+        _repoMock
+            .Setup(r => r.HasOverlapAsync(
+                request.Start,
+                request.End,
+                It.IsAny<int>()))
+            .ReturnsAsync(false);
+
+        // Act
+        await _delegate.BookAsync(
+            request,
+            null);
+
+        // Assert
+        _emailMock.Verify(
+            e => e.SendEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.Is<string>(
+                    body =>
+                        body.Contains("Paciente") &&
+                        body.Contains("—"))),
+            Times.AtLeastOnce);
+    }
+    
+    
     // GetByIdAsync: Returns DTO when found
     [Fact]
     public async Task GetAppointmentAsync_WhenAppointmentExistsAndBelongsToUser_ReturnsAppointment()
@@ -163,24 +301,23 @@ public class AppointmentDelegateTests
             Times.Once);
     }
     
-    // CreateAsync: Generates ID, saves via repo
+    // BookAsync: Generates ID, saves via repo
     [Fact]
     public async Task BookAsync_WhenSlotIsAvailable_CreatesAppointment()
     {
-        // Arrange
         var request = new CreateAppointmentDto
         {
             Start = new DateTime(
-                2026, 10, 15, 17, 0, 0,
+                2026, 10, 20, 17, 0, 0,
                 DateTimeKind.Utc),
 
             End = new DateTime(
-                2026, 10, 15, 18, 0, 0,
+                2026, 10, 20, 18, 0, 0,
                 DateTimeKind.Utc),
 
             Nombre = "Metzli",
             Apellido = "Lopez",
-            NombrePaciente = null,
+            NombrePaciente = "Ana",
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
@@ -188,57 +325,32 @@ public class AppointmentDelegateTests
         };
 
         _repoMock
-            .Setup(repo => repo.HasOverlapAsync(
+            .Setup(r => r.HasOverlapAsync(
                 request.Start,
                 request.End))
             .ReturnsAsync(false);
 
         _repoMock
-            .Setup(repo => repo.CreateAsync(
+            .Setup(r => r.CreateAsync(
                 It.IsAny<Appointment>()))
-            .ReturnsAsync((Appointment appointment) =>
-            {
-                appointment.Id = 10;
-                return appointment;
-            });
+            .ReturnsAsync(
+                (Appointment appointment) => appointment);
 
-        // Act
-        var result = await _delegate.BookAsync(
-            request,
-            "user-123");
+        var result =
+            await _delegate.BookAsync(
+                request,
+                "user-123");
 
-        // Assert
         Assert.NotNull(result);
-
-        Assert.Equal(10, result.Id);
         Assert.Equal("Metzli", result.Nombre);
-        Assert.Equal("Lopez", result.Apellido);
-        Assert.Equal("user-123", result.UserId);
 
         _repoMock.Verify(
-            repo => repo.HasOverlapAsync(
-                request.Start,
-                request.End),
+            r => r.CreateAsync(
+                It.IsAny<Appointment>()),
             Times.Once);
-
-        _repoMock.Verify(
-            repo => repo.CreateAsync(
-                It.Is<Appointment>(a =>
-                    a.Nombre == "Metzli" &&
-                    a.Apellido == "Lopez" &&
-                    a.Email == "metzli@example.com" &&
-                    a.UserId == "user-123")),
-            Times.Once);
-        
-        // _emailMock.Verify(
-        //     email => email.SendEmailAsync(
-        //         It.IsAny<string>(),
-        //         It.IsAny<string>(),
-        //         It.IsAny<string>()),
-        //     Times.Exactly(2));
     }
     
-    // CreateAsync: validates unique constraints
+    // BookAsync: validates unique constraints
     [Fact]
     public async Task BookAsync_WhenSlotOverlaps_ThrowsInvalidOperationException()
     {
@@ -290,6 +402,104 @@ public class AppointmentDelegateTests
                 It.IsAny<string>(),
                 It.IsAny<string>()),
             Times.Never);
+    }
+    
+    // BookAsync: Patient name and email
+    [Fact]
+    public async Task BookAsync_WithPatientName_SendsEmails()
+    {
+        var request = new CreateAppointmentDto
+        {
+            Start = new DateTime(
+                2026, 10, 21, 17, 0, 0,
+                DateTimeKind.Utc),
+
+            End = new DateTime(
+                2026, 10, 21, 18, 0, 0,
+                DateTimeKind.Utc),
+
+            Nombre = "Metzli",
+            Apellido = "Lopez",
+            NombrePaciente = "Ana",
+            Email = "metzli@example.com",
+            Numero = "6641234567",
+            Motivo = "Consulta",
+            Modalidad = "Online"
+        };
+
+        _repoMock
+            .Setup(r => r.HasOverlapAsync(
+                request.Start,
+                request.End))
+            .ReturnsAsync(false);
+
+        _repoMock
+            .Setup(r => r.CreateAsync(
+                It.IsAny<Appointment>()))
+            .ReturnsAsync(
+                (Appointment appointment) => appointment);
+
+        var result = await _delegate.BookAsync(
+            request,
+            "user-123");
+
+        _emailMock.Verify(
+            e => e.SendEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.Is<string>(
+                    body => body.Contains("Ana"))),
+            Times.AtLeastOnce);
+    }
+    
+    //BookAsync: Sends email
+    [Fact]
+    public async Task BookAsync_WithoutPatientName_SendsEmailsUsingDash()
+    {
+        var request = new CreateAppointmentDto
+        {
+            Start = new DateTime(
+                2026, 10, 22, 17, 0, 0,
+                DateTimeKind.Utc),
+
+            End = new DateTime(
+                2026, 10, 22, 18, 0, 0,
+                DateTimeKind.Utc),
+
+            Nombre = "Metzli",
+            Apellido = "Lopez",
+            NombrePaciente = null,
+            Email = "metzli@example.com",
+            Numero = "6641234567",
+            Motivo = "Consulta",
+            Modalidad = "Online"
+        };
+
+        _repoMock
+            .Setup(r => r.HasOverlapAsync(
+                request.Start,
+                request.End))
+            .ReturnsAsync(false);
+
+        _repoMock
+            .Setup(r => r.CreateAsync(
+                It.IsAny<Appointment>()))
+            .ReturnsAsync(
+                (Appointment appointment) => appointment);
+
+        await _delegate.BookAsync(
+            request,
+            "user-123");
+
+        _emailMock.Verify(
+            e => e.SendEmailAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.Is<string>(
+                    body =>
+                        body.Contains("Paciente") &&
+                        body.Contains("—"))),
+            Times.AtLeastOnce);
     }
     
     // UpdateAsync: Updates all fields

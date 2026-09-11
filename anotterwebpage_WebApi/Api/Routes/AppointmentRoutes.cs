@@ -5,11 +5,11 @@ using anotterwebpage_WebApi.Api.Errors;
 using anotterwebpage_WebApi.Api.Extensions;
 using FluentValidation;
 
-namespace anotterwebpage_WebApi.Api.Endpoints;
+namespace anotterwebpage_WebApi.Api.Routes;
 
 public static class AppointmentRoutes
 {
-    public static RouteGroupBuilder MapAppointmentEndpoints(
+    public static RouteGroupBuilder MapAppointmentRoutes(
         this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/appointments")

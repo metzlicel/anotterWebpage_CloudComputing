@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using FluentValidation;
-using anotterwebpage_WebApi.Api.Endpoints;
+using anotterwebpage_WebApi.Api.Routes;
 using anotterwebpage_WebApi.Data;
 using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Repositories;
@@ -9,6 +9,7 @@ using anotterwebpage_WebApi.Services;
 using anotterwebpage_WebApi.Api.Validators;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,32 +78,68 @@ app.UseAuthorization();
 app.MapGroup("/api/auth")
     .MapIdentityApi<IdentityUser>();
 
-// APPLICATION ENDPOINTS
-app.MapAppointmentEndpoints();
-app.MapCollaborationEndpoints();
+// APPLICATION ROUTES
+app.MapAppointmentRoutes();
+app.MapCollaborationRoutes();
 
-app.UseExceptionHandler(exceptionHandlerApp =>
+app.UseExceptionHandler(errorApp =>
 {
-    exceptionHandlerApp.Run(async context =>
+    errorApp.Run(async context =>
     {
+        var exceptionFeature =
+            context.Features
+                .Get<IExceptionHandlerFeature>();
+
+        var exception =
+            exceptionFeature?.Error;
+
+      
+        if (exception is BadHttpRequestException ||
+            exception is JsonException)
+        {
+            context.Response.StatusCode =
+                StatusCodes.Status400BadRequest;
+
+            context.Response.ContentType =
+                "application/problem+json";
+
+            var problem = new
+            {
+                type =
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                title = "Invalid Request",
+                status = 400,
+                errors = new Dictionary<string, string[]>
+                {
+                    ["body"] = new[]
+                    {
+                        "El JSON enviado no es válido."
+                    }
+                }
+            };
+
+            var json =
+                JsonSerializer.Serialize(problem);
+
+            await context.Response.WriteAsync(json);
+
+            return;
+        }
+        
         context.Response.StatusCode =
             StatusCodes.Status500InternalServerError;
 
-        context.Response.ContentType = "application/problem+json";
+        context.Response.ContentType =
+            "application/problem+json";
 
-        await context.Response.WriteAsJsonAsync(new
-        {
-            type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-            title = "Internal Server Error",
-            status = 500,
-            errors = new Dictionary<string, string[]>
+        await context.Response.WriteAsJsonAsync(
+            new
             {
-                ["server"] = new[]
-                {
-                    "An unexpected error occurred."
-                }
-            }
-        });
+                type =
+                    "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                title = "Internal Server Error",
+                status = 500
+            });
     });
 });
 //

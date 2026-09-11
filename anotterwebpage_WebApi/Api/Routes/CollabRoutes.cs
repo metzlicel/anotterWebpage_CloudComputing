@@ -4,11 +4,11 @@ using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Api.Extensions;
 using anotterwebpage_WebApi.Api.Errors;
 
-namespace anotterwebpage_WebApi.Api.Endpoints;
+namespace anotterwebpage_WebApi.Api.Routes;
 
-public static class CollaborationEndpoints
+public static class CollaborationRoutes
 {
-    public static RouteGroupBuilder MapCollaborationEndpoints(
+    public static RouteGroupBuilder MapCollaborationRoutes(
         this IEndpointRouteBuilder routes)
     {
         var group = routes
@@ -40,7 +40,7 @@ public static class CollaborationEndpoints
                     g => g.Key,
                     g => g.Select(e => e.ErrorMessage).ToArray());
 
-            return Results.ValidationProblem(errors);
+            return ApiErrorResults.Validation(errors);
         }
 
         var collaboration =

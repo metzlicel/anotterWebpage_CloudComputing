@@ -161,14 +161,35 @@ public class CollabDelegateTests
                     c.Apellido == "Lopez" &&
                     c.Email == "metzli@example.com")),
             Times.Once);
-        //
-        // _emailMock.Verify(
-        //     email => email.SendEmailAsync(
-        //         It.IsAny<string>(),
-        //         It.IsAny<string>(),
-        //         It.IsAny<string>()),
-        //     Times.Exactly(2));
     }
+
+[Fact]
+public async Task CreateAsync_ValidCollaboration_SendsEmails()
+{
+    var request = new CreateCollabDto
+    {
+        Nombre = "Metzli",
+        Apellido = "Lopez",
+        NombreOrg = "CETYS",
+        Email = "metzli@example.com",
+        Numero = "6641234567",
+        Motivo = "Propuesta de colaboración"
+    };
+
+    _repoMock
+        .Setup(r => r.CreateAsync(It.IsAny<Collab>()))
+        .ReturnsAsync((Collab collab) => collab);
+
+    await _delegate.CreateAsync(request);
+
+    _emailMock.Verify(
+        e => e.SendEmailAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<string>()),
+        Times.Exactly(2));
+}
+
     
     // UpdateAsync: Updates all fields
     [Fact]
