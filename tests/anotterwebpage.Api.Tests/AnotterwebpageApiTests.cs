@@ -1,12 +1,11 @@
+using anotterwebpage.Api.Tests.Fakes;
+using anotterwebpage_WebApi.Data;
+using anotterwebpage_WebApi.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
-using anotterwebpage_WebApi.Data;
-
-using anotterwebpage_WebApi.Services;
-using anotterwebpage.Api.Tests.Fakes;
-using anotterwebpage_WebApi.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace anotterwebpage.Api.Tests;
@@ -17,42 +16,42 @@ public class AnotterwebpageApiTests
     private readonly string _databaseName =
         $"TestDb_{Guid.NewGuid()}";
 
-   protected override void ConfigureWebHost(
-    IWebHostBuilder builder)
-	{
-    	builder.ConfigureServices(services =>
-    	{
-        	var descriptor = services
-           		.SingleOrDefault(d =>
-                	d.ServiceType ==
-                	typeof(DbContextOptions<ApplicationDbContext>));
+    protected override void ConfigureWebHost(
+        IWebHostBuilder builder)
+    {
+        builder.ConfigureServices(services =>
+        {
+            // Eliminar completamente la configuración real de PostgreSQL
+            services.RemoveAll<
+                DbContextOptions<ApplicationDbContext>>();
 
-        	if (descriptor != null)
-        	{
-            	services.Remove(descriptor);
-        	}
+            services.RemoveAll<
+                IDbContextOptionsConfiguration<ApplicationDbContext>>();
 
-        	services.AddDbContext<ApplicationDbContext>(
-            	options =>
-            	{
-                	options.UseInMemoryDatabase(
-                    	_databaseName);
-            });
+            services.RemoveAll<ApplicationDbContext>();
 
-        	// Quitar el servicio real de correo
-        	services.RemoveAll<IEmailService>();
+            // Registrar únicamente EF Core InMemory para tests
+            services.AddDbContext<ApplicationDbContext>(
+                options =>
+                {
+                    options.UseInMemoryDatabase(
+                        _databaseName);
+                });
 
-        	// Usar un correo falso en integration tests
-        	services.AddSingleton<
-            	IEmailService,
-            	FakeEmailService>();
-    		});
-		}
+            // Evitar SMTP real durante integration tests
+            services.RemoveAll<IEmailService>();
+
+            services.AddSingleton<
+                IEmailService,
+                FakeEmailService>();
+        });
+    }
 
     public async Task ExecuteDbContextAsync(
         Func<ApplicationDbContext, Task> action)
     {
-        using var scope = Services.CreateScope();
+        using var scope =
+            Services.CreateScope();
 
         var context =
             scope.ServiceProvider
@@ -63,7 +62,8 @@ public class AnotterwebpageApiTests
 
     public async Task ResetDatabaseAsync()
     {
-        using var scope = Services.CreateScope();
+        using var scope =
+            Services.CreateScope();
 
         var context =
             scope.ServiceProvider
