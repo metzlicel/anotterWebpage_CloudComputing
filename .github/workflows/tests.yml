@@ -1,0 +1,63 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run API tests
+        run: |
+          dotnet test tests/anotterwebpage.Api.Tests/anotterwebpage.Api.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --collect:"XPlat Code Coverage"
+
+      - name: Run Delegate tests
+        run: |
+          dotnet test tests/anotterwebpage.Delegates.Tests/anotterwebpage.Delegates.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --collect:"XPlat Code Coverage"
+
+      - name: Run Repository tests
+        run: |
+          dotnet test tests/anotterwebpage.Repositories.Tests/anotterwebpage.Repositories.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --collect:"XPlat Code Coverage"
+
+      - name: Run Domain tests
+        run: |
+          dotnet test tests/anotterwebpage.Domain.Tests/anotterwebpage.Domain.Tests.csproj \
+          --no-build \
+          --configuration Release \
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-results
+          path: |
+            **/TestResults/**/coverage.cobertura.xml
