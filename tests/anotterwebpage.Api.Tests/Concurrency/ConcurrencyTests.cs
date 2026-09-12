@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using anotterwebpage_WebApi.Api.Dtos;
+using anotterwebpage_WebApi.Domain;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace anotterwebpage.Api.Tests.Concurrency;
 
@@ -10,6 +13,15 @@ public class ConcurrencyTests
     private readonly AnotterwebpageApiTests _factory;
     private readonly HttpClient _client;
 
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web)
+        {
+            Converters =
+            {
+                new JsonStringEnumConverter()
+            }
+        };
+    
     public ConcurrencyTests(
         AnotterwebpageApiTests factory)
     {
@@ -104,7 +116,7 @@ public class ConcurrencyTests
                         Email = $"paciente{i}@example.com",
                         Numero = $"66455500{i:00}",
                         Motivo = "Consulta",
-                        Modalidad = "Online"
+                        Modalidad = Modalidad.Online
                     };
                 })
                 .ToList();
@@ -137,7 +149,7 @@ public class ConcurrencyTests
 
         var appointments =
             await getResponse.Content
-                .ReadFromJsonAsync<List<AppointmentDto>>();
+                .ReadFromJsonAsync<List<AppointmentDto>>(JsonOptions);
 
         Assert.NotNull(appointments);
         Assert.Equal(5, appointments.Count);

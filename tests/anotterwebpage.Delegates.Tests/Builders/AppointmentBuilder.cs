@@ -22,7 +22,7 @@ public class AppointmentBuilder
         Email = "metzli@example.com",
         Numero = "6641234567",
         Motivo = "Consulta",
-        Modalidad = "Online",
+        Modalidad = Modalidad.Online,
         IsReserved = true,
         UserId = "user-123"
     };

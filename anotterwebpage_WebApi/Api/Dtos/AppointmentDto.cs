@@ -1,3 +1,5 @@
+using anotterwebpage_WebApi.Domain;
+
 namespace anotterwebpage_WebApi.Api.Dtos;
 
 public class AppointmentDto
@@ -15,7 +17,7 @@ public class AppointmentDto
     public string Numero { get; set; } = "";
     public string? Motivo { get; set; }
 
-    public string Modalidad { get; set; } = "";
+    public Modalidad? Modalidad { get; set; } 
 }
 
 public class CreateAppointmentDto
@@ -31,7 +33,7 @@ public class CreateAppointmentDto
     public string Numero { get; set; } = "";
     public string? Motivo { get; set; }
 
-    public string Modalidad { get; set; } = "";
+    public Modalidad? Modalidad { get; set; } 
 }
 
 public class UpdateAppointmentDto
@@ -47,5 +49,5 @@ public class UpdateAppointmentDto
     public string Numero { get; set; } = "";
     public string? Motivo { get; set; }
 
-    public string Modalidad { get; set; } = "";
+    public Modalidad? Modalidad { get; set; } 
 }

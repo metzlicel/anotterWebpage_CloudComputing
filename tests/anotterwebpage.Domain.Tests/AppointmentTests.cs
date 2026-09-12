@@ -28,7 +28,7 @@ public class AppointmentTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online",
+            Modalidad = Modalidad.Online,
             IsReserved = true,
             UserId = "user-123",
             CreatedAt = new DateTime(
@@ -46,7 +46,7 @@ public class AppointmentTests
         Assert.Equal("metzli@example.com", appointment.Email);
         Assert.Equal("6641234567", appointment.Numero);
         Assert.Equal("Consulta", appointment.Motivo);
-        Assert.Equal("Online", appointment.Modalidad);
+        Assert.Equal(Modalidad.Online, appointment.Modalidad);
         Assert.True(appointment.IsReserved);
         Assert.Equal("user-123", appointment.UserId);
     }
@@ -82,7 +82,7 @@ public class AppointmentTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = null,
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         // Assert

@@ -17,7 +17,7 @@ public class Appointment
     public string Numero { get; set; } = "";
     public string Motivo { get; set; }
     public bool IsReserved { get; set; } = true;
-    public string Modalidad { get; set; }
+    public Modalidad Modalidad { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     

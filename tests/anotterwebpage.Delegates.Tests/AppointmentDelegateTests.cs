@@ -149,7 +149,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -195,7 +195,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -321,7 +321,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -370,7 +370,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -424,7 +424,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -472,7 +472,7 @@ public class AppointmentDelegateTests
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -528,7 +528,7 @@ public class AppointmentDelegateTests
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Presencial"
+            Modalidad = Modalidad.Presencial
         };
 
         _repoMock
@@ -562,7 +562,7 @@ public class AppointmentDelegateTests
         Assert.Equal("ana@example.com", result.Email);
         Assert.Equal("6649999999", result.Numero);
         Assert.Equal("Seguimiento", result.Motivo);
-        Assert.Equal("Presencial", result.Modalidad);
+        Assert.Equal(Modalidad.Presencial, result.Modalidad);
         Assert.Equal(request.Start, result.Start);
         Assert.Equal(request.End, result.End);
 
@@ -595,7 +595,7 @@ public class AppointmentDelegateTests
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -642,7 +642,7 @@ public class AppointmentDelegateTests
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock
@@ -689,7 +689,7 @@ public class AppointmentDelegateTests
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         _repoMock

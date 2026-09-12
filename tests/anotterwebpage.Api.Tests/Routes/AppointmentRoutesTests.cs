@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Domain;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 
 namespace anotterwebpage.Api.Tests.Routes;
 
@@ -12,6 +15,15 @@ public class AppointmentRoutesTests
     private readonly AnotterwebpageApiTests _factory;
     private readonly HttpClient _client;
 
+    private static readonly JsonSerializerOptions JsonOptions =
+        new(JsonSerializerDefaults.Web)
+        {
+            Converters =
+            {
+                new JsonStringEnumConverter()
+            }
+        };
+    
     public AppointmentRoutesTests(
         AnotterwebpageApiTests factory)
     {
@@ -37,7 +49,7 @@ public class AppointmentRoutesTests
 
         var appointments =
             await response.Content
-                .ReadFromJsonAsync<List<AppointmentDto>>();
+                .ReadFromJsonAsync<List<AppointmentDto>>(JsonOptions);
 
         Assert.NotNull(appointments);
         Assert.Empty(appointments);
@@ -78,7 +90,7 @@ public class AppointmentRoutesTests
 
         var appointments =
             await response.Content
-                .ReadFromJsonAsync<List<AppointmentDto>>();
+                .ReadFromJsonAsync<List<AppointmentDto>>(JsonOptions);
 
         Assert.NotNull(appointments);
         Assert.Equal(2, appointments.Count);
@@ -124,7 +136,7 @@ public class AppointmentRoutesTests
 
         var appointment =
             await response.Content
-                .ReadFromJsonAsync<AppointmentDto>();
+                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
 
         Assert.NotNull(appointment);
         Assert.Equal(1, appointment.Id);
@@ -174,107 +186,150 @@ public class AppointmentRoutesTests
         Assert.Contains("\"id\"", body);
     }
 
-// GetBusy: return 200
-	[Fact]
-public async Task GetBusyAppointments_WhenAppointmentsExist_Returns200WithBusySlots()
-{
-    // Arrange
-    await _factory.ResetDatabaseAsync();
+    // GetBusy: return 200
+	    [Fact]
+    public async Task GetBusyAppointments_WhenAppointmentsExist_Returns200WithBusySlots()
+    {
+        // Arrange
+        await _factory.ResetDatabaseAsync();
 
-    await _factory.ExecuteDbContextAsync(
-        async context =>
+        await _factory.ExecuteDbContextAsync(
+            async context =>
+            {
+                context.Appointments.AddRange(
+                    new Appointment
+                    {
+                        Id = 1,
+                        Start = new DateTime(
+                            2026, 10, 20, 17, 0, 0,
+                            DateTimeKind.Utc),
+                        End = new DateTime(
+                            2026, 10, 20, 18, 0, 0,
+                            DateTimeKind.Utc),
+                        Nombre = "Metzli",
+                        Apellido = "Lopez",
+                        Email = "metzli@example.com",
+                        Numero = "6641234567",
+                        Motivo = "Consulta",
+                        Modalidad = Modalidad.Online,
+                        IsReserved = true
+                    },
+                    new Appointment
+                    {
+                        Id = 2,
+                        Start = new DateTime(
+                            2026, 10, 20, 19, 0, 0,
+                            DateTimeKind.Utc),
+                        End = new DateTime(
+                            2026, 10, 20, 20, 0, 0,
+                            DateTimeKind.Utc),
+                        Nombre = "Ana",
+                        Apellido = "Perez",
+                        Email = "ana@example.com",
+                        Numero = "6649999999",
+                        Motivo = "Seguimiento",
+                        Modalidad = Modalidad.Presencial,
+                        IsReserved = true
+                    });
+
+                await context.SaveChangesAsync();
+            });
+
+        var start =
+            "2026-10-20T00:00:00Z";
+
+        var end =
+            "2026-10-21T00:00:00Z";
+
+        // Act
+        var response =
+            await _client.GetAsync(
+                $"/api/appointments/busy?start={start}&end={end}");
+
+        // Assert
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        Assert.Equal(
+            "application/json",
+            response.Content.Headers.ContentType?.MediaType);
+
+        var body =
+            await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("\"id\":1", body);
+        Assert.Contains("\"id\":2", body);
+        Assert.Contains("\"title\":\"Reservado\"", body);
+    }
+
+    //GetBusy: No appointments returns empty array
+    [Fact]
+    public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmptyArray()
+    {
+        // Arrange
+        await _factory.ResetDatabaseAsync();
+
+        // Act
+        var response =
+            await _client.GetAsync(
+                "/api/appointments/busy" +
+                "?start=2026-10-20T00:00:00Z" +
+                "&end=2026-10-21T00:00:00Z");
+
+        // Assert
+        Assert.Equal(
+            HttpStatusCode.OK,
+            response.StatusCode);
+
+        var body =
+            await response.Content.ReadAsStringAsync();
+
+        Assert.Equal("[]", body);
+    }
+
+    // Enum as string
+    [Fact]
+    public async Task AppointmentResponse_SerializesModalidadAsString()
+    {
+        await _factory.ResetDatabaseAsync();
+
+        await _factory.ExecuteDbContextAsync(async context =>
         {
-            context.Appointments.AddRange(
+            context.Appointments.Add(
                 new Appointment
                 {
                     Id = 1,
                     Start = new DateTime(
                         2026, 10, 20, 17, 0, 0,
                         DateTimeKind.Utc),
+
                     End = new DateTime(
                         2026, 10, 20, 18, 0, 0,
                         DateTimeKind.Utc),
+
                     Nombre = "Metzli",
                     Apellido = "Lopez",
                     Email = "metzli@example.com",
                     Numero = "6641234567",
                     Motivo = "Consulta",
-                    Modalidad = "Online",
-                    IsReserved = true
-                },
-                new Appointment
-                {
-                    Id = 2,
-                    Start = new DateTime(
-                        2026, 10, 20, 19, 0, 0,
-                        DateTimeKind.Utc),
-                    End = new DateTime(
-                        2026, 10, 20, 20, 0, 0,
-                        DateTimeKind.Utc),
-                    Nombre = "Ana",
-                    Apellido = "Perez",
-                    Email = "ana@example.com",
-                    Numero = "6649999999",
-                    Motivo = "Seguimiento",
-                    Modalidad = "Presencial",
-                    IsReserved = true
+                    Modalidad = Modalidad.Online
                 });
 
             await context.SaveChangesAsync();
         });
 
-    var start =
-        "2026-10-20T00:00:00Z";
+        var response =
+            await _client.GetAsync(
+                "/api/appointments/1");
 
-    var end =
-        "2026-10-21T00:00:00Z";
+        var body =
+            await response.Content.ReadAsStringAsync();
 
-    // Act
-    var response =
-        await _client.GetAsync(
-            $"/api/appointments/busy?start={start}&end={end}");
-
-    // Assert
-    Assert.Equal(
-        HttpStatusCode.OK,
-        response.StatusCode);
-
-    Assert.Equal(
-        "application/json",
-        response.Content.Headers.ContentType?.MediaType);
-
-    var body =
-        await response.Content.ReadAsStringAsync();
-
-    Assert.Contains("\"id\":1", body);
-    Assert.Contains("\"id\":2", body);
-    Assert.Contains("\"title\":\"Reservado\"", body);
-}
-
-//GetBusy: No appointments returns empty array
-[Fact]
-public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmptyArray()
-{
-    // Arrange
-    await _factory.ResetDatabaseAsync();
-
-    // Act
-    var response =
-        await _client.GetAsync(
-            "/api/appointments/busy" +
-            "?start=2026-10-20T00:00:00Z" +
-            "&end=2026-10-21T00:00:00Z");
-
-    // Assert
-    Assert.Equal(
-        HttpStatusCode.OK,
-        response.StatusCode);
-
-    var body =
-        await response.Content.ReadAsStringAsync();
-
-    Assert.Equal("[]", body);
-}
+        Assert.Contains(
+            "\"modalidad\":\"Online\"",
+            body);
+    }
 
     
     // POST /items` returns 201 + Location | Valid CreateItemDto 
@@ -300,7 +355,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -326,12 +381,12 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
 
         var appointment =
             await response.Content
-                .ReadFromJsonAsync<AppointmentDto>();
+                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
 
         Assert.NotNull(appointment);
         Assert.True(appointment.Id > 0);
         Assert.Equal("Metzli", appointment.Nombre);
-        Assert.Equal("Online", appointment.Modalidad);
+        Assert.Equal(Modalidad.Online, appointment.Modalidad);
     }
     
     // POST /items` returns 400 | Missing/invalid fields, duplicate constraint violations 
@@ -356,7 +411,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "correo-invalido",
             Numero = "",
             Motivo = "Consulta",
-            Modalidad = ""
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -429,7 +484,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Consulta",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -480,7 +535,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Presencial"
+            Modalidad = Modalidad.Presencial
         };
 
         // Act
@@ -500,7 +555,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
 
         var appointment =
             await response.Content
-                .ReadFromJsonAsync<AppointmentDto>();
+                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
 
         Assert.NotNull(appointment);
         Assert.Equal(1, appointment.Id);
@@ -510,7 +565,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
         Assert.Equal("ana@example.com", appointment.Email);
         Assert.Equal("6649999999", appointment.Numero);
         Assert.Equal("Seguimiento", appointment.Motivo);
-        Assert.Equal("Presencial", appointment.Modalidad);
+        Assert.Equal(Modalidad.Presencial, appointment.Modalidad);
         Assert.Equal(request.Start, appointment.Start);
         Assert.Equal(request.End, appointment.End);
     }
@@ -538,7 +593,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Seguimiento",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -589,7 +644,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "correo-invalido",
             Numero = "",
             Motivo = "Prueba",
-            Modalidad = ""
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -690,7 +745,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "metzli@example.com",
             Numero = "6641234567",
             Motivo = "Consulta actualizada",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         // Act
@@ -730,7 +785,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = "ana@example.com",
             Numero = "6649999999",
             Motivo = "Prueba",
-            Modalidad = "Online"
+            Modalidad = Modalidad.Online
         };
 
         var response =
@@ -845,7 +900,7 @@ public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmpt
             Email = $"{nombre.ToLower()}@example.com",
             Numero = "6641234567",
             Motivo = "Consulta",
-            Modalidad = "Online",
+            Modalidad = Modalidad.Online,
             IsReserved = true,
             UserId = userId
         };

@@ -56,7 +56,7 @@ public class AppointmentDelegate : IAppointmentDelegate
         appointment.Email = request.Email;
         appointment.Numero = request.Numero;
         appointment.Motivo = request.Motivo;
-        appointment.Modalidad = request.Modalidad;
+        appointment.Modalidad = request.Modalidad!.Value;
 
         return await _repository.UpdateAsync(appointment);
     }
@@ -109,7 +109,7 @@ public class AppointmentDelegate : IAppointmentDelegate
             Email = request.Email,
             Numero = request.Numero,
             Motivo = request.Motivo,
-            Modalidad = request.Modalidad,
+            Modalidad = request.Modalidad!.Value,
             IsReserved = true,
             UserId = userId
         };

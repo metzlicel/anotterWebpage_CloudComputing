@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using anotterwebpage_WebApi.Domain;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace anotterwebpage.Api.Tests.Middleware;
@@ -36,7 +37,7 @@ public class ValidationMiddlewareTests
             email = "correo-invalido",
             numero = "",
             motivo = "Consulta",
-            modalidad = ""
+            modalidad = Modalidad.Presencial
         };
 
         // Act

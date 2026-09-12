@@ -22,7 +22,12 @@ public class BookAppointmentValidator
             .NotEmpty();
 
         RuleFor(x => x.Modalidad)
-            .NotEmpty();
+            .NotNull()
+            .WithMessage("La modalidad es obligatoria.");
+
+        RuleFor(x => x.Modalidad)
+            .IsInEnum()
+            .When(x => x.Modalidad.HasValue);
 
         RuleFor(x => x.End)
             .NotEmpty()
