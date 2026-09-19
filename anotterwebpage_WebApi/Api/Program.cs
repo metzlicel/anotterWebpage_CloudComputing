@@ -35,14 +35,18 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 // IDENTITY
 builder.Services
-    .AddIdentityApiEndpoints<IdentityUser>(options =>
-    {
-        options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequireUppercase = true;
-        options.Password.RequireNonAlphanumeric = true;
-        options.Password.RequiredLength = 6;
-    })
+    .AddIdentityApiEndpoints<IdentityUser>(
+        options =>
+        {
+            options.Password.RequiredLength = 8;
+            options.Password.RequireDigit = true;
+            options.Password.RequireUppercase = true;
+            options.Password.RequireLowercase = true;
+            options.Password.RequireNonAlphanumeric = true;
+
+            // Por ahora no exigiremos confirmación de email
+            options.SignIn.RequireConfirmedEmail = false;
+        })
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddAuthorization();
@@ -77,6 +81,7 @@ app.UseAuthorization();
 // IDENTITY ENDPOINTS
 app.MapGroup("/api/auth")
     .MapIdentityApi<IdentityUser>();
+
 
 // APPLICATION ROUTES
 app.MapAppointmentRoutes();

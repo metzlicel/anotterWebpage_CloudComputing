@@ -27,7 +27,7 @@ namespace anotterwebpage_WebApi.Migrations
                     Numero = table.Column<string>(type: "text", nullable: false),
                     Motivo = table.Column<string>(type: "text", nullable: false),
                     IsReserved = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
-                    Modalidad = table.Column<string>(type: "text", nullable: false),
+                    Modalidad = table.Column<int>(type: "integer", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     UserId = table.Column<string>(type: "text", nullable: true)
                 },

@@ -2,6 +2,6 @@ namespace anotterwebpage_WebApi.Domain;
 
 public enum Modalidad
 {
-    Online,
-    Presencial
+    Online = 0,
+    Presencial = 1
 }

@@ -86,6 +86,7 @@ public class AppointmentDelegateTests
     }
     
      //GetBusy: Returns DTO when found
+     // quitar hardcode fecha DateTime.now + 3 dias
      [Fact]
      public async Task GetBusyAsync_ReturnsAppointmentsFromRepository()
      {

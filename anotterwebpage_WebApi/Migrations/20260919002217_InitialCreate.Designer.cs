@@ -12,7 +12,7 @@ using anotterwebpage_WebApi.Data;
 namespace anotterwebpage_WebApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260911041640_InitialCreate")]
+    [Migration("20260919002217_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -20,7 +20,7 @@ namespace anotterwebpage_WebApi.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.26")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -248,9 +248,8 @@ namespace anotterwebpage_WebApi.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(true);
 
-                    b.Property<string>("Modalidad")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("Modalidad")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Motivo")
                         .IsRequired()

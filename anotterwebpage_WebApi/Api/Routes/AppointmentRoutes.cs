@@ -13,7 +13,8 @@ public static class AppointmentRoutes
         this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/appointments")
-            .WithTags("Appointments");
+            .WithTags("Appointments")
+            .RequireAuthorization();
 
         group.MapGet("/", GetAll);
         

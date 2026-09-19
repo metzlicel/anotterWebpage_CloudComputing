@@ -69,6 +69,7 @@ public class AppointmentDelegate : IAppointmentDelegate
         return await _repository.GetBusyAsync(start, end);
     }
 
+    // Tablas de roles user y admin
     public async Task<Appointment?> GetAppointmentAsync(
         int id,
         string? userId)
@@ -139,6 +140,7 @@ public class AppointmentDelegate : IAppointmentDelegate
         return true;
     }
     
+    // Mover a una propiedad, link desde el program al email por injection
     private async Task SendEmailsAsync(Appointment appointment)
     {
         var adminEmail = "metzli.lopez@cetys.edu.mx";
