@@ -13,8 +13,8 @@ public static class CollaborationRoutes
     {
         var group = routes
             .MapGroup("/api/collaborations")
-            .WithTags("Collaborations")
-            .RequireAuthorization();
+            .WithTags("Collaborations");
+            //.RequireAuthorization();
 
         group.MapPost("/", Create);
         group.MapGet("/", GetAll);
