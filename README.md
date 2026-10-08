@@ -1,5 +1,5 @@
 # Anotter Webpage
-Proyecto final Cloud Computing
+Proyecto final Computo en la Nube
 
 Plataforma de manejo de agenda para la Dra. Connie Lopez. 
 Crea citas y colaboraciones a través de la página web.
@@ -9,3 +9,5 @@ Crea citas y colaboraciones a través de la página web.
 * Marlon Corona 36505
 * Priscila Nieto 33599
 * Alan Lopez 33628
+
+
