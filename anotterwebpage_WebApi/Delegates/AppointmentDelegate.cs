@@ -8,39 +8,51 @@ namespace anotterwebpage_WebApi.Delegate;
 public class AppointmentDelegate : IAppointmentDelegate
 {
     private readonly IAppointmentRepository _repository;
-    private readonly IEmailService _email;
+    private readonly IPatientRepository _patientRepository;
+    private readonly IDoctorRepository _doctorRepository;
+    private readonly IAppointmentNotificationRepository _notificationRepository;
+    private readonly IAppointmentNotificationFactory _notificationFactory;
 
     public AppointmentDelegate(
         IAppointmentRepository repository,
-        IEmailService email)
+        IPatientRepository patientRepository,
+        IDoctorRepository doctorRepository,
+        IAppointmentNotificationRepository notificationRepository,
+        IAppointmentNotificationFactory notificationFactory)
     {
         _repository = repository;
-        _email = email;
+        _patientRepository = patientRepository;
+        _doctorRepository = doctorRepository;
+        _notificationRepository = notificationRepository;
+        _notificationFactory = notificationFactory;
     }
-    
+
     public async Task<List<Appointment>> GetAllAsync()
     {
         return await _repository.GetAllAsync();
-    }    
+    }
+
     public async Task<Appointment?> UpdateAsync(
         int id,
         UpdateAppointmentDto request,
         string? userId)
     {
-        var appointment =
-            await _repository.GetByIdAsync(id);
+        var appointment = await _repository.GetByIdAsync(id);
 
-        if (appointment == null)
+        if (appointment is null ||
+            !await CanManageAsync(appointment, userId))
             return null;
 
-        if (appointment.UserId != userId)
-            return null;
+        if (appointment.Status == AppointmentStatus.Cancelada)
+        {
+            throw new InvalidOperationException(
+                "La cita cancelada no puede modificarse.");
+        }
 
-        var overlap =
-            await _repository.HasOverlapAsync(
-                request.Start,
-                request.End,
-                id);
+        var overlap = await _repository.HasOverlapAsync(
+            request.Start,
+            request.End,
+            id);
 
         if (overlap)
         {
@@ -48,19 +60,32 @@ public class AppointmentDelegate : IAppointmentDelegate
                 "Ese horario ya está reservado.");
         }
 
-        appointment.Start = request.Start;
-        appointment.End = request.End;
-        appointment.Nombre = request.Nombre;
-        appointment.Apellido = request.Apellido;
-        appointment.NombrePaciente = request.NombrePaciente;
-        appointment.Email = request.Email;
-        appointment.Numero = request.Numero;
-        appointment.Motivo = request.Motivo;
-        appointment.Modalidad = request.Modalidad!.Value;
+        if (!request.Modalidad.HasValue)
+        {
+            throw new InvalidOperationException(
+                "La modalidad es obligatoria.");
+        }
+
+        if (HasNoEffectiveChanges(appointment, request))
+        {
+            return appointment;
+        }
+
+        var previousDetails = appointment.Snapshot();
+        appointment.UpdateDetails(
+            request.Start,
+            request.End,
+            request.Motivo,
+            request.Modalidad.Value);
+
+        var notifications = await _notificationFactory.CreateAsync(
+            appointment,
+            AppointmentNotificationType.Modificada,
+            previousDetails);
+        _notificationRepository.AddRange(notifications);
 
         return await _repository.UpdateAsync(appointment);
     }
-    
 
     public async Task<List<Appointment>> GetBusyAsync(
         DateTime start,
@@ -69,18 +94,14 @@ public class AppointmentDelegate : IAppointmentDelegate
         return await _repository.GetBusyAsync(start, end);
     }
 
-    // Tablas de roles user y admin
     public async Task<Appointment?> GetAppointmentAsync(
         int id,
         string? userId)
     {
-        var appointment =
-            await _repository.GetByIdAsync(id);
+        var appointment = await _repository.GetByIdAsync(id);
 
-        if (appointment == null)
-            return null;
-
-        if (appointment.UserId != userId)
+        if (appointment is null ||
+            !await CanManageAsync(appointment, userId))
             return null;
 
         return appointment;
@@ -90,6 +111,34 @@ public class AppointmentDelegate : IAppointmentDelegate
         CreateAppointmentDto request,
         string? userId)
     {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            throw new InvalidOperationException(
+                "Debes iniciar sesión para reservar una cita.");
+        }
+
+        if (!request.Modalidad.HasValue)
+        {
+            throw new InvalidOperationException(
+                "La modalidad es obligatoria.");
+        }
+
+        var patient = await _patientRepository.GetByUserIdAsync(userId);
+
+        if (patient is null)
+        {
+            throw new InvalidOperationException(
+                "La cuenta autenticada no tiene un perfil de paciente.");
+        }
+
+        var doctor = await _doctorRepository.GetActiveAsync();
+
+        if (doctor is null)
+        {
+            throw new InvalidOperationException(
+                "No hay una doctora activa para atender la cita.");
+        }
+
         var overlap = await _repository.HasOverlapAsync(
             request.Start,
             request.End);
@@ -100,141 +149,78 @@ public class AppointmentDelegate : IAppointmentDelegate
                 "Ese horario ya está reservado.");
         }
 
-        var appointment = new Appointment
-        {
-            Start = request.Start,
-            End = request.End,
-            Nombre = request.Nombre,
-            Apellido = request.Apellido,
-            NombrePaciente = request.NombrePaciente,
-            Email = request.Email,
-            Numero = request.Numero,
-            Motivo = request.Motivo,
-            Modalidad = request.Modalidad!.Value,
-            IsReserved = true,
-            UserId = userId
-        };
+        var appointment = Appointment.Create(
+            patient.Id,
+            doctor.Id,
+            request.Start,
+            request.End,
+            request.Motivo,
+            request.Modalidad.Value);
 
-        await _repository.CreateAsync(appointment);
+        appointment.Patient = patient;
+        appointment.Doctor = doctor;
 
-        await SendEmailsAsync(appointment);
+        var notifications = await _notificationFactory.CreateAsync(
+            appointment,
+            AppointmentNotificationType.Creada);
+        _notificationRepository.AddRange(notifications);
 
-        return appointment;
+        return await _repository.CreateAsync(appointment);
     }
 
-    public async Task<bool> DeleteAsync(
+    public async Task<AppointmentCancellationResult> CancelAsync(
         int id,
         string? userId)
     {
-        var appointment =
-            await _repository.GetByIdAsync(id);
+        var appointment = await _repository.GetByIdAsync(id);
 
-        if (appointment == null)
-            return false;
+        if (appointment is null ||
+            !await CanManageAsync(appointment, userId))
+        {
+            return AppointmentCancellationResult.NotFound;
+        }
 
-        if (appointment.UserId != userId)
-            return false;
+        if (!appointment.Cancel(DateTime.UtcNow))
+        {
+            return AppointmentCancellationResult.AlreadyCancelled;
+        }
 
-        await _repository.DeleteAsync(appointment);
+        var notifications = await _notificationFactory.CreateAsync(
+            appointment,
+            AppointmentNotificationType.Cancelada);
+        _notificationRepository.AddRange(notifications);
 
-        return true;
+        await _repository.UpdateAsync(appointment);
+
+        return AppointmentCancellationResult.Cancelled;
     }
-    
-    // Mover a una propiedad, link desde el program al email por injection
-    private async Task SendEmailsAsync(Appointment appointment)
+
+    private async Task<bool> CanManageAsync(
+        Appointment appointment,
+        string? userId)
     {
-        var adminEmail = "metzli.lopez@cetys.edu.mx";
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return false;
+        }
 
-        var bodyAdmin = $@"
-            <h2>Nueva cita agendada</h2>
-            <p><b>Fecha:</b> {appointment.Start}</p>
-            <p><b>Nombre:</b> {appointment.Nombre} {appointment.Apellido}</p>
-            <p><b>Paciente:</b> {(string.IsNullOrWhiteSpace(appointment.NombrePaciente) ? "—" : appointment.NombrePaciente)}</p>
-            <p><b>Email:</b> {appointment.Email}</p>
-            <p><b>WhatsApp:</b> {appointment.Numero}</p>
-            <p><b>Motivo:</b> {appointment.Motivo}</p>
-            <p><b>Modalidad:</b> {appointment.Modalidad}</p>
-        ";
+        if (appointment.Patient.UserId == userId)
+        {
+            return true;
+        }
 
-        await _email.SendEmailAsync(
-            adminEmail,
-            "Nueva cita agendada",
-            bodyAdmin
-        );
+        var doctor = await _doctorRepository.GetByUserIdAsync(userId);
+        return doctor?.Id == appointment.DoctorId;
+    }
 
-        var bodyPatient = $@"
-            <p>¡Hola!</p>
-
-            <p>
-                Gracias por agendar tu consulta con
-                <strong>Connie López</strong> 🤍
-            </p>
-
-            <p>
-                El costo de la consulta es de
-                <strong>$950 MXN</strong> e incluye:
-            </p>
-
-            <ul>
-                <li>✨ Toma de medidas básicas</li>
-                <li>✨ Valoración nutricional</li>
-                <li>✨ Manuales y material de apoyo</li>
-                <li>✨ Educación en nutrición</li>
-                <li>✨ Plan de alimentación (según necesidades del paciente)</li>
-            </ul>
-
-            <p>
-                <b>Fecha:</b>
-                {appointment.Start:dddd dd 'de' MMMM yyyy, HH:mm} hrs
-            </p>
-
-            <p><b>Nombre:</b> {appointment.Nombre} {appointment.Apellido}</p>
-
-            <p>
-                <b>Paciente:</b>
-                {(string.IsNullOrWhiteSpace(appointment.NombrePaciente)
-                    ? "—"
-                    : appointment.NombrePaciente)}
-            </p>
-
-            <p><b>Email:</b> {appointment.Email}</p>
-            <p><b>WhatsApp:</b> {appointment.Numero}</p>
-            <p><b>Motivo:</b> {appointment.Motivo}</p>
-            <p><b>Modalidad:</b> {appointment.Modalidad}</p>
-
-            <p>
-                <strong>Políticas de cancelación y reagenda:</strong>
-            </p>
-
-            <ul>
-                <li>
-                    Cancelar una consulta con cita confirmada genera una multa
-                    del <strong>costo total</strong> de la consulta.
-                </li>
-
-                <li>
-                    Reagendar la misma consulta en
-                    <strong>3 ocasiones</strong> generará una multa de
-                    <strong>$200 MXN</strong>.
-                </li>
-
-                <li>
-                    No se permite el cambio de modalidad
-                    (en línea/presencial) de último momento.
-                    En días lluviosos o por seguridad de ambas partes,
-                    esto puede ser sugerido por tu nutrióloga.
-                </li>
-            </ul>
-
-            <p>
-                Cualquier duda, puedes responder directamente a este correo. 💌
-            </p>
-        ";
-
-        await _email.SendEmailAsync(
-            appointment.Email,
-            "Gracias por agendar con Connie López",
-            bodyPatient
-        );
+    private static bool HasNoEffectiveChanges(
+        Appointment appointment,
+        UpdateAppointmentDto request)
+    {
+        return appointment.Start == request.Start &&
+               appointment.End == request.End &&
+               request.Motivo is not null &&
+               appointment.Motivo == request.Motivo.Trim() &&
+               appointment.Modalidad == request.Modalidad;
     }
 }

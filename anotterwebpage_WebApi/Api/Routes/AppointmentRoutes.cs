@@ -3,7 +3,10 @@ using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Api.Errors;
 using anotterwebpage_WebApi.Api.Extensions;
+using anotterwebpage_WebApi.Domain;
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
+using anotterwebpage_WebApi.Services;
 
 namespace anotterwebpage_WebApi.Api.Routes;
 
@@ -14,21 +17,31 @@ public static class AppointmentRoutes
     {
         var group = routes.MapGroup("/api/appointments")
             .WithTags("Appointments");
-            //.RequireAuthorization();
 
-        group.MapGet("/", GetAll);
+        group.MapGet("/", GetAll)
+            .RequireAuthorization(DoctorOnly());
         
-        group.MapGet("/busy", GetBusy);
+        group.MapGet("/busy", GetBusy)
+            .RequireAuthorization();
 
-        group.MapGet("/{id}", GetAppointment);           // .RequireAuthorization();
+        group.MapGet("/{id}", GetAppointment)
+            .RequireAuthorization(PatientOrDoctor());
 
-        group.MapPost("/", Book);
-            //.RequireAuthorization();
-            
-        group.MapPut("/{id}", Update);
+        group.MapGet("/{id}/consultation-detail", GetConsultationDetail)
+            .RequireAuthorization(PatientOrDoctor());
+
+        group.MapPut("/{id}/consultation-detail", SaveConsultationDetail)
+            .RequireAuthorization(DoctorOnly());
+
+        group.MapPost("/", Book)
+            .RequireAuthorization(PatientOnly());
+
+        group.MapPut("/{id}", Update)
+            .RequireAuthorization(PatientOrDoctor());
 
 
-        group.MapDelete("/{id}", Delete);
+        group.MapDelete("/{id}", Delete)
+            .RequireAuthorization(PatientOrDoctor());
         
         return group;
     }
@@ -46,18 +59,15 @@ public static class AppointmentRoutes
     private static async Task<IResult> GetBusy(
         DateTime start,
         DateTime end,
+        ClaimsPrincipal user,
         IAppointmentDelegate appointmentDelegate)
     {
         var appointments =
             await appointmentDelegate.GetBusyAsync(start, end);
 
-        var response = appointments.Select(a => new
-        {
-            id = a.Id,
-            title = "Reservado",
-            start = a.Start,
-            end = a.End
-        });
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var response = appointments.Select(a => a.ToBusyDto(userId));
 
         return Results.Ok(response);
     }
@@ -131,6 +141,77 @@ public static class AppointmentRoutes
             return Results.Created(
                 $"/api/appointments/{appointment.Id}",
                 appointment.ToDto());
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ApiErrorResults.BusinessViolation(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> GetConsultationDetail(
+        string id,
+        ClaimsPrincipal user,
+        IAppointmentConsultationDetailService consultationDetailService)
+    {
+        if (!int.TryParse(id, out var appointmentId))
+        {
+            return InvalidAppointmentId();
+        }
+
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        var detail = await consultationDetailService.GetAsync(
+            appointmentId,
+            userId);
+
+        if (detail is null)
+        {
+            return ApiErrorResults.NotFound(
+                "Consultation detail not found.");
+        }
+
+        return Results.Ok(detail.ToDto());
+    }
+
+    private static async Task<IResult> SaveConsultationDetail(
+        string id,
+        UpsertAppointmentConsultationDetailDto request,
+        ClaimsPrincipal user,
+        IAppointmentConsultationDetailService consultationDetailService,
+        IValidator<UpsertAppointmentConsultationDetailDto> validator)
+    {
+        if (!int.TryParse(id, out var appointmentId))
+        {
+            return InvalidAppointmentId();
+        }
+
+        var validationResult = await validator.ValidateAsync(request);
+
+        if (!validationResult.IsValid)
+        {
+            return ApiErrorResults.Validation(
+                validationResult.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray()));
+        }
+
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        try
+        {
+            var detail = await consultationDetailService.SaveAsync(
+                appointmentId,
+                request,
+                userId);
+
+            if (detail is null)
+            {
+                return ApiErrorResults.NotFound(
+                    "Appointment not found.");
+            }
+
+            return Results.Ok(detail.ToDto());
         }
         catch (InvalidOperationException ex)
         {
@@ -220,17 +301,54 @@ public static class AppointmentRoutes
         var userId =
             user.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        var deleted =
-            await appointmentDelegate.DeleteAsync(
+        var cancellation =
+            await appointmentDelegate.CancelAsync(
                 appointmentId,
                 userId);
 
-        if (!deleted)
+        if (cancellation == AppointmentCancellationResult.NotFound)
         {
             return ApiErrorResults.NotFound(
                 "Appointment not found.");
         }
 
+        if (cancellation == AppointmentCancellationResult.AlreadyCancelled)
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Appointment already cancelled",
+                detail: "La cita ya estaba cancelada.");
+        }
+
         return Results.NoContent();
+    }
+
+    private static AuthorizeAttribute PatientOnly() =>
+        new()
+        {
+            Roles = IdentityRoles.Patient
+        };
+
+    private static AuthorizeAttribute DoctorOnly() =>
+        new()
+        {
+            Roles = IdentityRoles.Doctor
+        };
+
+    private static AuthorizeAttribute PatientOrDoctor() =>
+        new()
+        {
+            Roles = $"{IdentityRoles.Patient},{IdentityRoles.Doctor}"
+        };
+
+    private static IResult InvalidAppointmentId()
+    {
+        return ApiErrorResults.Validation(new Dictionary<string, string[]>
+        {
+            ["id"] = new[]
+            {
+                "El formato del ID no es válido."
+            }
+        });
     }
 }

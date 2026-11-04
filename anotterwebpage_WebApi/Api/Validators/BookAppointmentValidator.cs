@@ -8,17 +8,12 @@ public class BookAppointmentValidator
 {
     public BookAppointmentValidator()
     {
-        RuleFor(x => x.Nombre)
-            .NotEmpty();
-
-        RuleFor(x => x.Apellido)
-            .NotEmpty();
-
-        RuleFor(x => x.Email)
+        RuleFor(x => x.Start)
             .NotEmpty()
-            .EmailAddress();
+            .Must(date => date.Kind == DateTimeKind.Utc)
+            .WithMessage("La fecha inicial debe estar en UTC.");
 
-        RuleFor(x => x.Numero)
+        RuleFor(x => x.Motivo)
             .NotEmpty();
 
         RuleFor(x => x.Modalidad)
@@ -31,6 +26,8 @@ public class BookAppointmentValidator
 
         RuleFor(x => x.End)
             .NotEmpty()
+            .Must(date => date.Kind == DateTimeKind.Utc)
+            .WithMessage("La fecha final debe estar en UTC.")
             .GreaterThan(x => x.Start)
             .WithMessage(
                 "La fecha final debe ser posterior a la inicial.");

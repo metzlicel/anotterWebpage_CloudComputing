@@ -12,6 +12,9 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+var bootstrapDoctor = args.Contains(
+    "--bootstrap-doctor",
+    StringComparer.OrdinalIgnoreCase);
 
 // DATABASE
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
@@ -47,12 +50,17 @@ builder.Services
             // Por ahora no exigiremos confirmación de email
             options.SignIn.RequireConfirmedEmail = false;
         })
+    .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
 builder.Services.AddAuthorization();
 
 // REPOSITORIES
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+builder.Services.AddScoped<IAppointmentConsultationDetailRepository, AppointmentConsultationDetailRepository>();
+builder.Services.AddScoped<IPatientRepository, PatientRepository>();
+builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
+builder.Services.AddScoped<IAppointmentNotificationRepository, AppointmentNotificationRepository>();
 
 builder.Services.AddScoped<ICollabRepository, CollabRepository>();
 
@@ -62,10 +70,44 @@ builder.Services.AddScoped<ICollabDelegate, CollabDelegate>();
 
 // SERVICES 
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IAppointmentNotificationFactory, AppointmentNotificationFactory>();
+builder.Services.AddScoped<IAppointmentConsultationDetailService, AppointmentConsultationDetailService>();
+builder.Services.AddScoped<IPatientRegistrationService, PatientRegistrationService>();
+builder.Services.AddScoped<IIdentityProfileInitializer, IdentityProfileInitializer>();
+builder.Services.AddScoped<IDoctorBootstrapService, DoctorBootstrapService>();
+builder.Services.Configure<AppointmentNotificationOutboxOptions>(
+    builder.Configuration.GetSection(AppointmentNotificationOutboxOptions.SectionName));
+builder.Services.AddSingleton<AppointmentNotificationDispatcher>();
+builder.Services.AddSingleton<IAppointmentNotificationDispatcher>(
+    serviceProvider => serviceProvider.GetRequiredService<AppointmentNotificationDispatcher>());
+builder.Services.AddHostedService(
+    serviceProvider => serviceProvider.GetRequiredService<AppointmentNotificationDispatcher>());
 // VALIDATORS
 builder.Services.AddValidatorsFromAssemblyContaining<BookAppointmentValidator>();
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    if (bootstrapDoctor)
+    {
+        var bootstrapService = scope.ServiceProvider
+            .GetRequiredService<IDoctorBootstrapService>();
+
+        var result = await bootstrapService.BootstrapAsync();
+
+        Console.WriteLine(
+            $"Doctor bootstrap completed. UserId: {result.UserId}. " +
+            $"Account created: {result.AccountCreated}.");
+
+        return;
+    }
+
+    var initializer = scope.ServiceProvider
+        .GetRequiredService<IIdentityProfileInitializer>();
+
+    await initializer.InitializeAsync();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -79,8 +121,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // IDENTITY ENDPOINTS
-app.MapGroup("/api/auth")
-    .MapIdentityApi<IdentityUser>();
+app.MapAuthRoutes();
 
 
 // APPLICATION ROUTES

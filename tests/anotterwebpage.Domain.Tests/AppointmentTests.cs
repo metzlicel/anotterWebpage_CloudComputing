@@ -5,91 +5,110 @@ namespace anotterwebpage.Domain.Tests;
 public class AppointmentTests
 {
     [Fact]
-    public void Appointment_CanBeCreatedWithExpectedValues()
+    public void Create_WithValidValues_CreatesConfirmedAppointment()
     {
-        // Arrange
-        var start = new DateTime(
-            2026, 10, 20, 17, 0, 0,
-            DateTimeKind.Utc);
+        var start = DateTime.UtcNow.AddDays(3);
 
-        var end = new DateTime(
-            2026, 10, 20, 18, 0, 0,
-            DateTimeKind.Utc);
+        var appointment = Appointment.Create(
+            patientId: 1,
+            doctorId: 2,
+            start,
+            start.AddHours(1),
+            "Consulta inicial",
+            Modalidad.Online);
 
-        // Act
-        var appointment = new Appointment
-        {
-            Id = 1,
-            Start = start,
-            End = end,
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = "Paciente",
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online,
-            IsReserved = true,
-            UserId = "user-123",
-            CreatedAt = new DateTime(
-                2026, 10, 1, 12, 0, 0,
-                DateTimeKind.Utc)
-        };
-
-        // Assert
-        Assert.Equal(1, appointment.Id);
-        Assert.Equal(start, appointment.Start);
-        Assert.Equal(end, appointment.End);
-        Assert.Equal("Metzli", appointment.Nombre);
-        Assert.Equal("Lopez", appointment.Apellido);
-        Assert.Equal("Paciente", appointment.NombrePaciente);
-        Assert.Equal("metzli@example.com", appointment.Email);
-        Assert.Equal("6641234567", appointment.Numero);
-        Assert.Equal("Consulta", appointment.Motivo);
-        Assert.Equal(Modalidad.Online, appointment.Modalidad);
-        Assert.True(appointment.IsReserved);
-        Assert.Equal("user-123", appointment.UserId);
+        Assert.Equal(1, appointment.PatientId);
+        Assert.Equal(2, appointment.DoctorId);
+        Assert.Equal(AppointmentStatus.Confirmada, appointment.Status);
+        Assert.Null(appointment.CancelledAt);
+        Assert.Equal("Consulta inicial", appointment.Motivo);
     }
-    
-    // Default
-    [Fact]
-    public void Appointment_IsReserved_HasExpectedDefaultValue()
-    {
-        var appointment = new Appointment();
 
-        Assert.True(appointment.IsReserved);
+    [Fact]
+    public void Create_WithNonUtcDates_ThrowsArgumentException()
+    {
+        var start = DateTime.Now.AddDays(3);
+
+        Assert.Throws<ArgumentException>(() => Appointment.Create(
+            1,
+            2,
+            start,
+            start.AddHours(1),
+            "Consulta",
+            Modalidad.Online));
     }
-    
-    // Optional fields
+
     [Fact]
-    public void Appointment_OptionalFields_CanBeNull()
+    public void Create_WithEndBeforeStart_ThrowsArgumentException()
     {
-        // Act
-        var appointment = new Appointment
-        {
-            Id = 1,
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
+        var start = DateTime.UtcNow.AddDays(3);
 
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
+        Assert.Throws<ArgumentException>(() => Appointment.Create(
+            1,
+            2,
+            start,
+            start.AddMinutes(-1),
+            "Consulta",
+            Modalidad.Online));
+    }
 
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = null,
-            Modalidad = Modalidad.Online
-        };
+    [Fact]
+    public void Create_WithoutPatient_ThrowsArgumentOutOfRangeException()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
 
-        // Assert
-        Assert.Null(appointment.NombrePaciente);
-        Assert.Null(appointment.Motivo);
+        Assert.Throws<ArgumentOutOfRangeException>(() => Appointment.Create(
+            0,
+            2,
+            start,
+            start.AddHours(1),
+            "Consulta",
+            Modalidad.Online));
+    }
 
-        // Regla del dominio que ya definimos
-        Assert.True(appointment.IsReserved);
+    [Fact]
+    public void UpdateDetails_WithValidValues_UpdatesAppointment()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointment = Appointment.Create(
+            1,
+            2,
+            start,
+            start.AddHours(1),
+            "Consulta",
+            Modalidad.Online);
+
+        var updatedStart = start.AddDays(1);
+        appointment.UpdateDetails(
+            updatedStart,
+            updatedStart.AddHours(2),
+            "Seguimiento",
+            Modalidad.Presencial);
+
+        Assert.Equal(updatedStart, appointment.Start);
+        Assert.Equal("Seguimiento", appointment.Motivo);
+        Assert.Equal(Modalidad.Presencial, appointment.Modalidad);
+    }
+
+    [Fact]
+    public void Cancel_FirstTimeMarksAppointmentAndSecondTimeReturnsFalse()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointment = Appointment.Create(
+            1,
+            2,
+            start,
+            start.AddHours(1),
+            "Consulta",
+            Modalidad.Online);
+        var cancelledAt = DateTime.UtcNow;
+
+        var firstCancellation = appointment.Cancel(cancelledAt);
+        var secondCancellation = appointment.Cancel(cancelledAt.AddMinutes(1));
+
+        Assert.True(firstCancellation);
+        Assert.False(secondCancellation);
+        Assert.Equal(AppointmentStatus.Cancelada, appointment.Status);
+        Assert.Equal(cancelledAt, appointment.CancelledAt);
     }
 }

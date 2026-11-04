@@ -23,7 +23,7 @@ public interface IAppointmentDelegate
         UpdateAppointmentDto request,
         string? userId);
     
-    Task<bool> DeleteAsync(
+    Task<AppointmentCancellationResult> CancelAsync(
         int id,
         string? userId);
 }

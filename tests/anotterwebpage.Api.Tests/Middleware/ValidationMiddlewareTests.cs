@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using anotterwebpage_WebApi.Domain;
+using anotterwebpage.Api.Tests.Fakes;
+using anotterwebpage_WebApi.Services;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace anotterwebpage.Api.Tests.Middleware;
@@ -27,22 +29,25 @@ public class ValidationMiddlewareTests
     {
         // Arrange
         await _factory.ResetDatabaseAsync();
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(
+            TestAuthenticationHandler.UserIdHeader,
+            "patient-user");
+        client.DefaultRequestHeaders.Add(
+            TestAuthenticationHandler.RolesHeader,
+            IdentityRoles.Patient);
 
         var request = new
         {
             start = "2026-10-20T18:00:00Z",
             end = "2026-10-20T17:00:00Z",
-            nombre = "",
-            apellido = "",
-            email = "correo-invalido",
-            numero = "",
             motivo = "Consulta",
             modalidad = Modalidad.Presencial
         };
 
         // Act
         var response =
-            await _client.PostAsJsonAsync(
+            await client.PostAsJsonAsync(
                 "/api/appointments",
                 request);
 
@@ -64,14 +69,6 @@ public class ValidationMiddlewareTests
 
         Assert.Contains(
             "\"status\":400",
-            body);
-
-        Assert.Contains(
-            "\"Nombre\"",
-            body);
-
-        Assert.Contains(
-            "\"Email\"",
             body);
 
         Assert.Contains(

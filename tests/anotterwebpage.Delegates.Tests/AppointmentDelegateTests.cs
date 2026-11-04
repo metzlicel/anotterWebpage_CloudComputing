@@ -1,819 +1,353 @@
-using Moq;
+using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Delegate;
 using anotterwebpage_WebApi.Domain;
 using anotterwebpage_WebApi.Repositories;
 using anotterwebpage_WebApi.Services;
-using anotterwebpage_WebApi.Api.Dtos;
-using anotterwebpage.Delegates.Tests.Builders;
+using Moq;
 
 namespace anotterwebpage.Delegates.Tests;
 
 public class AppointmentDelegateTests
 {
-    private readonly Mock<IAppointmentRepository> _repoMock;
-    private readonly Mock<IEmailService> _emailMock;
-    private readonly IAppointmentDelegate _delegate;
+    private readonly Mock<IAppointmentRepository> _appointmentRepository = new();
+    private readonly Mock<IPatientRepository> _patientRepository = new();
+    private readonly Mock<IDoctorRepository> _doctorRepository = new();
+    private readonly Mock<IAppointmentNotificationRepository> _notificationRepository = new();
+    private readonly Mock<IAppointmentNotificationFactory> _notificationFactory = new();
+    private readonly AppointmentDelegate _delegate;
 
     public AppointmentDelegateTests()
     {
-        _repoMock = new Mock<IAppointmentRepository>();
-        _emailMock = new Mock<IEmailService>();
-
         _delegate = new AppointmentDelegate(
-            _repoMock.Object,
-            _emailMock.Object);
+            _appointmentRepository.Object,
+            _patientRepository.Object,
+            _doctorRepository.Object,
+            _notificationRepository.Object,
+            _notificationFactory.Object);
+
+        _notificationFactory.Setup(factory => factory.CreateAsync(
+                It.IsAny<Appointment>(),
+                It.IsAny<AppointmentNotificationType>(),
+                It.IsAny<AppointmentDetails?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Appointment appointment,
+                AppointmentNotificationType type,
+                AppointmentDetails? previousDetails,
+                CancellationToken cancellationToken) => CreateNotifications(appointment, type));
     }
 
-    //GetAllAsync: Returns empty list
     [Fact]
-    public async Task GetAllAsync_WhenNoAppointments_ReturnsEmptyList()
+    public async Task BookAsync_ResolvesProfilesAndCreatesConfirmedAppointment()
     {
-        // Arrange
-        _repoMock
-            .Setup(repo => repo.GetAllAsync())
-            .ReturnsAsync(new List<Appointment>());
-
-        // Act
-        var result = await _delegate.GetAllAsync();
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Empty(result);
-
-        _repoMock.Verify(
-            repo => repo.GetAllAsync(),
-            Times.Once);
-    }
-    
-    //GetAllAsync: returns multiple with correct mapping
-    [Fact]
-    public async Task GetAllAsync_WhenAppointmentsExist_ReturnsAllAppointments()
-    {
-        // Arrange
-        var appointments = new List<Appointment>
-        {
-            new AppointmentBuilder()
-                .WithId(1)
-                .WithNombre("Metzli")
-                .Build(),
-
-            new AppointmentBuilder()
-                .WithId(2)
-                .WithNombre("Ana")
-                .Build()
-        };
-
-        _repoMock
-            .Setup(repo => repo.GetAllAsync())
-            .ReturnsAsync(appointments);
-
-        // Act
-        var result = await _delegate.GetAllAsync();
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(2, result.Count);
-
-        Assert.Equal(1, result[0].Id);
-        Assert.Equal("Metzli", result[0].Nombre);
-
-        Assert.Equal(2, result[1].Id);
-        Assert.Equal("Ana", result[1].Nombre);
-
-        _repoMock.Verify(
-            repo => repo.GetAllAsync(),
-            Times.Once);
-    }
-    
-     //GetBusy: Returns DTO when found
-     // quitar hardcode fecha DateTime.now + 3 dias
-     [Fact]
-     public async Task GetBusyAsync_ReturnsAppointmentsFromRepository()
-     {
-         var start = new DateTime(
-             2026, 10, 20, 8, 0, 0,
-             DateTimeKind.Utc);
-
-         var end = new DateTime(
-             2026, 10, 20, 20, 0, 0,
-             DateTimeKind.Utc);
-
-         var appointments = new List<Appointment>
-         {
-             new AppointmentBuilder()
-                 .WithId(1)
-                 .Build(),
-
-             new AppointmentBuilder()
-                 .WithId(2)
-                 .Build()
-         };
-
-         _repoMock
-             .Setup(r => r.GetBusyAsync(
-                 start,
-                 end))
-             .ReturnsAsync(appointments);
-
-         var result =
-             await _delegate.GetBusyAsync(
-                 start,
-                 end);
-
-         Assert.Equal(2, result.Count);
-
-         _repoMock.Verify(
-             r => r.GetBusyAsync(
-                 start,
-                 end),
-             Times.Once);
-     }
-    
-    //GetBusyAsync: Send Emails
-    [Fact]
-    public async Task CreateAppointment_WithPatientName_SendsEmails()
-    {
-        // Arrange
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = "Ana",
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(r => r.HasOverlapAsync(
-                request.Start,
-                request.End,
-                It.IsAny<int>()))
-            .ReturnsAsync(false);
-
-        // Act
-        await _delegate.BookAsync(
-            request,
-            null);
-
-        // Assert
-        _emailMock.Verify(
-            e => e.SendEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.Is<string>(
-                    body => body.Contains("Ana"))),
-            Times.AtLeastOnce);
-    }
-    
-    // GetBusyAsync: Send Email, name null
-    [Fact]
-    public async Task CreateAppointment_WithoutPatientName_SendsEmailsUsingDash()
-    {
-        // Arrange
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 21, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 21, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(r => r.HasOverlapAsync(
-                request.Start,
-                request.End,
-                It.IsAny<int>()))
-            .ReturnsAsync(false);
-
-        // Act
-        await _delegate.BookAsync(
-            request,
-            null);
-
-        // Assert
-        _emailMock.Verify(
-            e => e.SendEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.Is<string>(
-                    body =>
-                        body.Contains("Paciente") &&
-                        body.Contains("—"))),
-            Times.AtLeastOnce);
-    }
-    
-    
-    // GetByIdAsync: Returns DTO when found
-    [Fact]
-    public async Task GetAppointmentAsync_WhenAppointmentExistsAndBelongsToUser_ReturnsAppointment()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("user-123")
-            .Build();
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
-            .ReturnsAsync(appointment);
-
-        // Act
-        var result = await _delegate.GetAppointmentAsync(
-            1,
-            "user-123");
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.Equal(1, result.Id);
-        Assert.Equal("user-123", result.UserId);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(1),
-            Times.Once);
-    }
-    
-    // GetByIdAsync: Returns null when not found
-    [Fact]
-    public async Task GetAppointmentAsync_WhenAppointmentDoesNotExist_ReturnsNull()
-    {
-        // Arrange
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(999))
-            .ReturnsAsync((Appointment?)null);
-
-        // Act
-        var result = await _delegate.GetAppointmentAsync(
-            999,
-            "user-123");
-
-        // Assert
-        Assert.Null(result);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(999),
-            Times.Once);
-    }
-    
-    // GetByIdAsync: Returns null when different user
-    [Fact]
-    public async Task GetAppointmentAsync_WhenAppointmentBelongsToDifferentUser_ReturnsNull()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("user-other")
-            .Build();
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
-            .ReturnsAsync(appointment);
-
-        // Act
-        var result = await _delegate.GetAppointmentAsync(
-            1,
-            "user-123");
-
-        // Assert
-        Assert.Null(result);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(1),
-            Times.Once);
-    }
-    
-    // BookAsync: Generates ID, saves via repo
-    [Fact]
-    public async Task BookAsync_WhenSlotIsAvailable_CreatesAppointment()
-    {
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = "Ana",
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(r => r.HasOverlapAsync(
+        var start = DateTime.UtcNow.AddDays(3);
+        var request = CreateRequest(start);
+        var patient = CreatePatient();
+        var doctor = CreateDoctor();
+        _patientRepository.Setup(repository => repository.GetByUserIdAsync("patient-user"))
+            .ReturnsAsync(patient);
+        _doctorRepository.Setup(repository => repository.GetActiveAsync())
+            .ReturnsAsync(doctor);
+        _appointmentRepository.Setup(repository => repository.HasOverlapAsync(
                 request.Start,
                 request.End))
             .ReturnsAsync(false);
+        _appointmentRepository.Setup(repository => repository.CreateAsync(It.IsAny<Appointment>()))
+            .ReturnsAsync((Appointment appointment) => appointment);
 
-        _repoMock
-            .Setup(r => r.CreateAsync(
-                It.IsAny<Appointment>()))
-            .ReturnsAsync(
-                (Appointment appointment) => appointment);
+        var result = await _delegate.BookAsync(request, "patient-user");
 
-        var result =
-            await _delegate.BookAsync(
-                request,
-                "user-123");
-
-        Assert.NotNull(result);
-        Assert.Equal("Metzli", result.Nombre);
-
-        _repoMock.Verify(
-            r => r.CreateAsync(
-                It.IsAny<Appointment>()),
-            Times.Once);
+        Assert.Equal(patient.Id, result.PatientId);
+        Assert.Equal(doctor.Id, result.DoctorId);
+        Assert.Equal(AppointmentStatus.Confirmada, result.Status);
+        _appointmentRepository.Verify(repository => repository.CreateAsync(
+            It.Is<Appointment>(appointment =>
+                appointment.Patient == patient && appointment.Doctor == doctor)), Times.Once);
+        _notificationRepository.Verify(repository => repository.AddRange(
+            It.Is<IEnumerable<AppointmentNotification>>(notifications =>
+                notifications.Count() == 2 &&
+                notifications.All(notification =>
+                    notification.Type == AppointmentNotificationType.Creada))), Times.Once);
     }
-    
-    // BookAsync: validates unique constraints
+
     [Fact]
-    public async Task BookAsync_WhenSlotOverlaps_ThrowsInvalidOperationException()
+    public async Task BookAsync_WhenSlotOverlaps_DoesNotCreateAppointment()
     {
-        // Arrange
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 15, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 15, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(repo => repo.HasOverlapAsync(
+        var start = DateTime.UtcNow.AddDays(3);
+        var request = CreateRequest(start);
+        _patientRepository.Setup(repository => repository.GetByUserIdAsync("patient-user"))
+            .ReturnsAsync(CreatePatient());
+        _doctorRepository.Setup(repository => repository.GetActiveAsync())
+            .ReturnsAsync(CreateDoctor());
+        _appointmentRepository.Setup(repository => repository.HasOverlapAsync(
                 request.Start,
                 request.End))
             .ReturnsAsync(true);
 
-        // Act
-        var exception =
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => _delegate.BookAsync(
-                    request,
-                    "user-123"));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _delegate.BookAsync(request, "patient-user"));
 
-        // Assert
-        Assert.Equal(
-            "Ese horario ya está reservado.",
-            exception.Message);
-
-        _repoMock.Verify(
-            repo => repo.CreateAsync(
-                It.IsAny<Appointment>()),
+        _appointmentRepository.Verify(
+            repository => repository.CreateAsync(It.IsAny<Appointment>()),
             Times.Never);
-
-        _emailMock.Verify(
-            email => email.SendEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<string>()),
+        _notificationRepository.Verify(
+            repository => repository.AddRange(It.IsAny<IEnumerable<AppointmentNotification>>()),
             Times.Never);
     }
-    
-    // BookAsync: Patient name and email
+
     [Fact]
-    public async Task BookAsync_WithPatientName_SendsEmails()
+    public async Task BookAsync_WithoutPatientProfile_ThrowsBusinessViolation()
     {
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 21, 17, 0, 0,
-                DateTimeKind.Utc),
+        var request = CreateRequest(DateTime.UtcNow.AddDays(3));
+        _patientRepository.Setup(repository => repository.GetByUserIdAsync("patient-user"))
+            .ReturnsAsync((Patient?)null);
 
-            End = new DateTime(
-                2026, 10, 21, 18, 0, 0,
-                DateTimeKind.Utc),
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _delegate.BookAsync(request, "patient-user"));
 
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = "Ana",
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(r => r.HasOverlapAsync(
-                request.Start,
-                request.End))
-            .ReturnsAsync(false);
-
-        _repoMock
-            .Setup(r => r.CreateAsync(
-                It.IsAny<Appointment>()))
-            .ReturnsAsync(
-                (Appointment appointment) => appointment);
-
-        var result = await _delegate.BookAsync(
-            request,
-            "user-123");
-
-        _emailMock.Verify(
-            e => e.SendEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.Is<string>(
-                    body => body.Contains("Ana"))),
-            Times.AtLeastOnce);
+        _doctorRepository.Verify(repository => repository.GetActiveAsync(), Times.Never);
     }
-    
-    //BookAsync: Sends email
+
     [Fact]
-    public async Task BookAsync_WithoutPatientName_SendsEmailsUsingDash()
+    public async Task UpdateAsync_WhenAppointmentIsCancelled_ThrowsBusinessViolation()
     {
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 22, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 22, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(r => r.HasOverlapAsync(
-                request.Start,
-                request.End))
-            .ReturnsAsync(false);
-
-        _repoMock
-            .Setup(r => r.CreateAsync(
-                It.IsAny<Appointment>()))
-            .ReturnsAsync(
-                (Appointment appointment) => appointment);
-
-        await _delegate.BookAsync(
-            request,
-            "user-123");
-
-        _emailMock.Verify(
-            e => e.SendEmailAsync(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.Is<string>(
-                    body =>
-                        body.Contains("Paciente") &&
-                        body.Contains("—"))),
-            Times.AtLeastOnce);
-    }
-    
-    // UpdateAsync: Updates all fields
-    [Fact]
-    public async Task UpdateAsync_WhenAppointmentExistsAndSlotIsAvailable_UpdatesAllFields()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("user-123")
-            .Build();
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            NombrePaciente = "Paciente actualizado",
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Seguimiento",
-            Modalidad = Modalidad.Presencial
-        };
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointment = CreateAppointment(
+            AppointmentStatus.Cancelada,
+            start);
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
             .ReturnsAsync(appointment);
 
-        _repoMock
-            .Setup(repo => repo.HasOverlapAsync(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _delegate.UpdateAsync(
+            appointment.Id,
+            CreateUpdateRequest(start.AddDays(1)),
+            "patient-user"));
+
+        _appointmentRepository.Verify(
+            repository => repository.UpdateAsync(It.IsAny<Appointment>()),
+            Times.Never);
+        _notificationRepository.Verify(
+            repository => repository.AddRange(It.IsAny<IEnumerable<AppointmentNotification>>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithEffectiveChange_UpdatesAppointment()
+    {
+        var appointment = CreateAppointment();
+        var request = CreateUpdateRequest(appointment.Start.AddDays(1));
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
+            .ReturnsAsync(appointment);
+        _appointmentRepository.Setup(repository => repository.HasOverlapAsync(
                 request.Start,
                 request.End,
-                1))
+                appointment.Id))
             .ReturnsAsync(false);
+        _appointmentRepository.Setup(repository => repository.UpdateAsync(appointment))
+            .ReturnsAsync(appointment);
 
-        _repoMock
-            .Setup(repo => repo.UpdateAsync(
-                It.IsAny<Appointment>()))
-            .ReturnsAsync((Appointment a) => a);
+        var result = await _delegate.UpdateAsync(appointment.Id, request, "patient-user");
 
-        // Act
-        var result = await _delegate.UpdateAsync(
-            1,
-            request,
-            "user-123");
-
-        // Assert
         Assert.NotNull(result);
-
-        Assert.Equal("Ana", result.Nombre);
-        Assert.Equal("Perez", result.Apellido);
-        Assert.Equal("Paciente actualizado", result.NombrePaciente);
-        Assert.Equal("ana@example.com", result.Email);
-        Assert.Equal("6649999999", result.Numero);
-        Assert.Equal("Seguimiento", result.Motivo);
-        Assert.Equal(Modalidad.Presencial, result.Modalidad);
         Assert.Equal(request.Start, result.Start);
-        Assert.Equal(request.End, result.End);
-
-        _repoMock.Verify(
-            repo => repo.UpdateAsync(
-                It.Is<Appointment>(a =>
-                    a.Id == 1 &&
-                    a.Nombre == "Ana" &&
-                    a.Apellido == "Perez")),
-            Times.Once);
+        Assert.Equal(request.Motivo, result.Motivo);
+        _appointmentRepository.Verify(repository => repository.UpdateAsync(appointment), Times.Once);
+        _notificationRepository.Verify(repository => repository.AddRange(
+            It.Is<IEnumerable<AppointmentNotification>>(notifications =>
+                notifications.Count() == 2 &&
+                notifications.All(notification =>
+                    notification.Type == AppointmentNotificationType.Modificada))), Times.Once);
     }
-    
-    // UpdateAsync: throws if not found 
+
     [Fact]
-    public async Task UpdateAsync_WhenAppointmentDoesNotExist_ReturnsNull()
+    public async Task GetAppointmentAsync_AllowsTheAppointmentsDoctor()
     {
-        // Arrange
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Seguimiento",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(999))
-            .ReturnsAsync((Appointment?)null);
-
-        // Act
-        var result = await _delegate.UpdateAsync(
-            999,
-            request,
-            "user-123");
-
-        // Assert
-        Assert.Null(result);
-
-        _repoMock.Verify(
-            repo => repo.UpdateAsync(
-                It.IsAny<Appointment>()),
-            Times.Never);
-    }
-    
-    // UpdateAsync: Returns null different user
-    [Fact]
-    public async Task UpdateAsync_WhenAppointmentBelongsToDifferentUser_ReturnsNull()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("other-user")
-            .Build();
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Seguimiento",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
+        var appointment = CreateAppointment();
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
             .ReturnsAsync(appointment);
+        _doctorRepository.Setup(repository => repository.GetByUserIdAsync("doctor-user"))
+            .ReturnsAsync(appointment.Doctor);
 
-        // Act
-        var result = await _delegate.UpdateAsync(
-            1,
-            request,
-            "user-123");
+        var result = await _delegate.GetAppointmentAsync(appointment.Id, "doctor-user");
 
-        // Assert
-        Assert.Null(result);
-
-        _repoMock.Verify(
-            repo => repo.UpdateAsync(
-                It.IsAny<Appointment>()),
-            Times.Never);
+        Assert.Same(appointment, result);
     }
-    
-    // UpdateAsync: throws if overlaps
+
     [Fact]
-    public async Task UpdateAsync_WhenSlotOverlaps_ThrowsInvalidOperationException()
+    public async Task UpdateAsync_WithoutEffectiveChange_DoesNotPersistOrNotify()
     {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("user-123")
-            .Build();
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Seguimiento",
-            Modalidad = Modalidad.Online
-        };
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
+        var appointment = CreateAppointment();
+        var request = CreateUpdateRequest(appointment.Start);
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
             .ReturnsAsync(appointment);
-
-        _repoMock
-            .Setup(repo => repo.HasOverlapAsync(
+        _appointmentRepository.Setup(repository => repository.HasOverlapAsync(
                 request.Start,
                 request.End,
-                1))
-            .ReturnsAsync(true);
+                appointment.Id))
+            .ReturnsAsync(false);
 
-        // Act
-        var exception =
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => _delegate.UpdateAsync(
-                    1,
-                    request,
-                    "user-123"));
+        var result = await _delegate.UpdateAsync(appointment.Id, request, "patient-user");
 
-        // Assert
-        Assert.Equal(
-            "Ese horario ya está reservado.",
-            exception.Message);
-
-        _repoMock.Verify(
-            repo => repo.UpdateAsync(
-                It.IsAny<Appointment>()),
+        Assert.Same(appointment, result);
+        _appointmentRepository.Verify(
+            repository => repository.UpdateAsync(It.IsAny<Appointment>()),
+            Times.Never);
+        _notificationRepository.Verify(
+            repository => repository.AddRange(It.IsAny<IEnumerable<AppointmentNotification>>()),
             Times.Never);
     }
-    
-    // DeleteAsync: Deletes entity
-    [Fact]
-    public async Task DeleteAsync_WhenAppointmentExistsAndBelongsToUser_DeletesAppointment()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("user-123")
-            .Build();
 
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
+    [Fact]
+    public async Task UpdateAsync_WhenCallerDoesNotOwnAppointment_DoesNotPersistOrNotify()
+    {
+        var appointment = CreateAppointment();
+        var request = CreateUpdateRequest(appointment.Start.AddDays(1));
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
+            .ReturnsAsync(appointment);
+        _doctorRepository.Setup(repository => repository.GetByUserIdAsync("other-user"))
+            .ReturnsAsync((Doctor?)null);
+
+        var result = await _delegate.UpdateAsync(appointment.Id, request, "other-user");
+
+        Assert.Null(result);
+        _appointmentRepository.Verify(
+            repository => repository.HasOverlapAsync(
+                It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int>()),
+            Times.Never);
+        _appointmentRepository.Verify(
+            repository => repository.UpdateAsync(It.IsAny<Appointment>()),
+            Times.Never);
+        _notificationRepository.Verify(
+            repository => repository.AddRange(It.IsAny<IEnumerable<AppointmentNotification>>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelAsync_FirstCancellationMarksAppointmentAndPersistsIt()
+    {
+        var appointment = CreateAppointment();
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
+            .ReturnsAsync(appointment);
+        _appointmentRepository.Setup(repository => repository.UpdateAsync(appointment))
             .ReturnsAsync(appointment);
 
-        _repoMock
-            .Setup(repo => repo.DeleteAsync(appointment))
-            .Returns(Task.CompletedTask);
+        var result = await _delegate.CancelAsync(appointment.Id, "patient-user");
 
-        // Act
-        var result = await _delegate.DeleteAsync(
-            1,
-            "user-123");
-
-        // Assert
-        Assert.True(result);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(1),
-            Times.Once);
-
-        _repoMock.Verify(
-            repo => repo.DeleteAsync(appointment),
-            Times.Once);
+        Assert.Equal(AppointmentCancellationResult.Cancelled, result);
+        Assert.Equal(AppointmentStatus.Cancelada, appointment.Status);
+        Assert.NotNull(appointment.CancelledAt);
+        _appointmentRepository.Verify(repository => repository.UpdateAsync(appointment), Times.Once);
+        _notificationRepository.Verify(repository => repository.AddRange(
+            It.Is<IEnumerable<AppointmentNotification>>(notifications =>
+                notifications.Count() == 2 &&
+                notifications.All(notification =>
+                    notification.Type == AppointmentNotificationType.Cancelada))), Times.Once);
     }
-    
-    // DeleteAsync: throws if not found
+
     [Fact]
-    public async Task DeleteAsync_WhenAppointmentDoesNotExist_ReturnsFalse()
+    public async Task CancelAsync_AlreadyCancelled_DoesNotPersistAgain()
     {
-        // Arrange
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(999))
-            .ReturnsAsync((Appointment?)null);
-
-        // Act
-        var result = await _delegate.DeleteAsync(
-            999,
-            "user-123");
-
-        // Assert
-        Assert.False(result);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(999),
-            Times.Once);
-
-        _repoMock.Verify(
-            repo => repo.DeleteAsync(
-                It.IsAny<Appointment>()),
-            Times.Never);
-    }
-    
-    // DeleteAsync: handles referential integrity (different user)
-    [Fact]
-    public async Task DeleteAsync_WhenAppointmentBelongsToDifferentUser_ReturnsFalse()
-    {
-        // Arrange
-        var appointment = new AppointmentBuilder()
-            .WithId(1)
-            .WithUserId("other-user")
-            .Build();
-
-        _repoMock
-            .Setup(repo => repo.GetByIdAsync(1))
+        var appointment = CreateAppointment(AppointmentStatus.Cancelada);
+        _appointmentRepository.Setup(repository => repository.GetByIdAsync(appointment.Id))
             .ReturnsAsync(appointment);
 
-        // Act
-        var result = await _delegate.DeleteAsync(
-            1,
-            "user-123");
+        var result = await _delegate.CancelAsync(appointment.Id, "patient-user");
 
-        // Assert
-        Assert.False(result);
-
-        _repoMock.Verify(
-            repo => repo.GetByIdAsync(1),
-            Times.Once);
-
-        _repoMock.Verify(
-            repo => repo.DeleteAsync(
-                It.IsAny<Appointment>()),
+        Assert.Equal(AppointmentCancellationResult.AlreadyCancelled, result);
+        _appointmentRepository.Verify(
+            repository => repository.UpdateAsync(It.IsAny<Appointment>()),
             Times.Never);
+        _notificationRepository.Verify(
+            repository => repository.AddRange(It.IsAny<IEnumerable<AppointmentNotification>>()),
+            Times.Never);
+    }
+
+    private static CreateAppointmentDto CreateRequest(DateTime start) =>
+        new()
+        {
+            Start = start,
+            End = start.AddHours(1),
+            Motivo = "Consulta",
+            Modalidad = Modalidad.Online
+        };
+
+    private static UpdateAppointmentDto CreateUpdateRequest(DateTime start) =>
+        new()
+        {
+            Start = start,
+            End = start.AddHours(1),
+            Motivo = "Consulta",
+            Modalidad = Modalidad.Online
+        };
+
+    private static Patient CreatePatient() =>
+        new()
+        {
+            Id = 1,
+            UserId = "patient-user",
+            Nombre = "Ana",
+            Apellido = "Pérez",
+            Numero = "6641234567"
+        };
+
+    private static Doctor CreateDoctor() =>
+        new()
+        {
+            Id = 2,
+            UserId = "doctor-user",
+            Email = "doctora@example.com"
+        };
+
+    private static Appointment CreateAppointment(
+        AppointmentStatus status = AppointmentStatus.Confirmada,
+        DateTime? start = null)
+    {
+        var appointmentStart = start ?? DateTime.UtcNow.AddDays(3);
+        var patient = CreatePatient();
+        var doctor = CreateDoctor();
+        var appointment = Appointment.Create(
+            patient.Id,
+            doctor.Id,
+            appointmentStart,
+            appointmentStart.AddHours(1),
+            "Consulta",
+            Modalidad.Online);
+        appointment.Id = 10;
+        appointment.Patient = patient;
+        appointment.Doctor = doctor;
+
+        if (status == AppointmentStatus.Cancelada)
+        {
+            appointment.Cancel(DateTime.UtcNow);
+        }
+
+        return appointment;
+    }
+
+    private static IReadOnlyCollection<AppointmentNotification> CreateNotifications(
+        Appointment appointment,
+        AppointmentNotificationType type)
+    {
+        var eventKey = $"test:{type}:{Guid.NewGuid():N}";
+        return new[]
+        {
+            new AppointmentNotification
+            {
+                Appointment = appointment,
+                Type = type,
+                EventKey = eventKey,
+                RecipientEmail = "patient@example.com",
+                Subject = "Test",
+                Body = "Patient"
+            },
+            new AppointmentNotification
+            {
+                Appointment = appointment,
+                Type = type,
+                EventKey = eventKey,
+                RecipientEmail = "doctor@example.com",
+                Subject = "Test",
+                Body = "Doctor"
+            }
+        };
     }
 }

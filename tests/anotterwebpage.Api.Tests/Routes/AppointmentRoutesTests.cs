@@ -1,910 +1,323 @@
 using System.Net;
-using Microsoft.EntityFrameworkCore;
+using System.Net.Http.Json;
+using anotterwebpage.Api.Tests.Fakes;
 using anotterwebpage_WebApi.Api.Dtos;
 using anotterwebpage_WebApi.Domain;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-
+using anotterwebpage_WebApi.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace anotterwebpage.Api.Tests.Routes;
 
-public class AppointmentRoutesTests
-    : IClassFixture<AnotterwebpageApiTests>
+public class AppointmentRoutesTests : IClassFixture<AnotterwebpageApiTests>
 {
     private readonly AnotterwebpageApiTests _factory;
-    private readonly HttpClient _client;
 
-    private static readonly JsonSerializerOptions JsonOptions =
-        new(JsonSerializerDefaults.Web)
-        {
-            Converters =
-            {
-                new JsonStringEnumConverter()
-            }
-        };
-    
-    public AppointmentRoutesTests(
-        AnotterwebpageApiTests factory)
+    public AppointmentRoutesTests(AnotterwebpageApiTests factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
     }
 
-    // GET /items returns 200 with empty array
     [Fact]
-    public async Task GetAppointments_WhenDatabaseIsEmpty_Returns200WithEmptyArray()
+    public async Task AppointmentRoutes_RequireAuthentication()
     {
         await _factory.ResetDatabaseAsync();
-        
-        // Act
-        var response =
-            await _client.GetAsync(
-                "/api/appointments");
+        using var client = _factory.CreateClient();
+        var start = DateTime.UtcNow.AddDays(3);
 
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
+        var busyResponse = await client.GetAsync(
+            $"/api/appointments/busy?start={start:O}&end={start.AddHours(1):O}");
+        var bookingResponse = await client.PostAsJsonAsync(
+            "/api/appointments",
+            CreateRequest(start));
 
-        var appointments =
-            await response.Content
-                .ReadFromJsonAsync<List<AppointmentDto>>(JsonOptions);
-
-        Assert.NotNull(appointments);
-        Assert.Empty(appointments);
+        Assert.Equal(HttpStatusCode.Unauthorized, busyResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, bookingResponse.StatusCode);
     }
-    
-    
-    // GET /items: returns 200 with items 
+
     [Fact]
-    public async Task GetAppointments_WhenAppointmentsExist_Returns200WithItems()
+    public async Task Patient_CannotListAllAppointments()
     {
         await _factory.ResetDatabaseAsync();
-        
-        // Arrange
-        await _factory.ExecuteDbContextAsync(
-            async context =>
+        using var client = CreateClient("patient-a", IdentityRoles.Patient);
+
+        var response = await client.GetAsync("/api/appointments");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Patient_CanReadOwnAppointmentButNotAnotherPatients()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var ownerClient = CreateClient("patient-a", IdentityRoles.Patient);
+        using var otherPatientClient = CreateClient("patient-b", IdentityRoles.Patient);
+
+        var ownResponse = await ownerClient.GetAsync($"/api/appointments/{appointmentId}");
+        var otherResponse = await otherPatientClient.GetAsync($"/api/appointments/{appointmentId}");
+
+        Assert.Equal(HttpStatusCode.OK, ownResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Patient_CannotModifyAnotherPatientsAppointment()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var client = CreateClient("patient-b", IdentityRoles.Patient);
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/appointments/{appointmentId}",
+            CreateUpdateRequest(start.AddDays(1)));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Doctor_CanListAndModifyAnyAppointment()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var client = CreateClient("doctor-user", IdentityRoles.Doctor);
+
+        var listResponse = await client.GetAsync("/api/appointments");
+        var updateResponse = await client.PutAsJsonAsync(
+            $"/api/appointments/{appointmentId}",
+            CreateUpdateRequest(start.AddDays(1)));
+
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task BusyAppointments_ExposeNoPatientData()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        await SeedAppointmentAsync(start);
+        using var client = CreateClient("patient-a", IdentityRoles.Patient);
+
+        var response = await client.GetAsync(
+            $"/api/appointments/busy?start={start:O}&end={start.AddHours(1):O}");
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("isMine", content);
+        Assert.DoesNotContain("Ana", content);
+        Assert.DoesNotContain("6641234567", content);
+    }
+
+    [Fact]
+    public async Task Patient_CanBookForOwnProfile()
+    {
+        await SeedProfilesAsync();
+        using var client = CreateClient("patient-a", IdentityRoles.Patient);
+        var start = DateTime.UtcNow.AddDays(3);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/appointments",
+            CreateRequest(start));
+
+        var notificationCount = 0;
+        await _factory.ExecuteDbContextAsync(async context =>
+        {
+            notificationCount = await context.AppointmentNotifications.CountAsync();
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(2, notificationCount);
+    }
+
+    [Fact]
+    public async Task SecondCancellation_ReturnsConflict()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var client = CreateClient("doctor-user", IdentityRoles.Doctor);
+
+        var firstResponse = await client.DeleteAsync($"/api/appointments/{appointmentId}");
+        var secondResponse = await client.DeleteAsync($"/api/appointments/{appointmentId}");
+
+        Assert.Equal(HttpStatusCode.NoContent, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Doctor_CannotBookAnAppointmentForAPatient()
+    {
+        await _factory.ResetDatabaseAsync();
+        using var client = CreateClient("doctor-user", IdentityRoles.Doctor);
+        var start = DateTime.UtcNow.AddDays(3);
+
+        var response = await client.PostAsJsonAsync(
+            "/api/appointments",
+            CreateRequest(start));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Patient_CannotCancelAnotherPatientsAppointment()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var client = CreateClient("patient-b", IdentityRoles.Patient);
+
+        var response = await client.DeleteAsync($"/api/appointments/{appointmentId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CancelledAppointment_NoLongerAppearsAsBusy()
+    {
+        var start = DateTime.UtcNow.AddDays(3);
+        var appointmentId = await SeedAppointmentAsync(start);
+        using var doctorClient = CreateClient("doctor-user", IdentityRoles.Doctor);
+        using var patientClient = CreateClient("patient-a", IdentityRoles.Patient);
+
+        var cancellationResponse = await doctorClient.DeleteAsync(
+            $"/api/appointments/{appointmentId}");
+        var busyResponse = await patientClient.GetAsync(
+            $"/api/appointments/busy?start={start:O}&end={start.AddHours(1):O}");
+        var busyAppointments = await busyResponse.Content
+            .ReadFromJsonAsync<List<BusyAppointmentDto>>();
+
+        Assert.Equal(HttpStatusCode.NoContent, cancellationResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, busyResponse.StatusCode);
+        Assert.Empty(busyAppointments!);
+    }
+
+    [Fact]
+    public async Task Doctor_CanSaveConsultationDetail_AndPatientCanReadIt()
+    {
+        var appointmentId = await SeedAppointmentAsync(
+            DateTime.UtcNow.AddDays(3));
+        using var doctorClient = CreateClient("doctor-user", IdentityRoles.Doctor);
+        using var patientClient = CreateClient("patient-a", IdentityRoles.Patient);
+        var request = new UpsertAppointmentConsultationDetailDto
+        {
+            Diagnostico = "Sobrepeso",
+            Recomendaciones = "Aumentar el consumo de verduras.",
+            Observaciones = "Seguimiento en cuatro semanas."
+        };
+
+        var saveResponse = await doctorClient.PutAsJsonAsync(
+            $"/api/appointments/{appointmentId}/consultation-detail",
+            request);
+        var detailResponse = await patientClient.GetAsync(
+            $"/api/appointments/{appointmentId}/consultation-detail");
+        var appointmentResponse = await patientClient.GetAsync(
+            $"/api/appointments/{appointmentId}");
+
+        var detail = await detailResponse.Content
+            .ReadFromJsonAsync<AppointmentConsultationDetailDto>();
+        var appointmentContent = await appointmentResponse.Content
+            .ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, saveResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, detailResponse.StatusCode);
+        Assert.Equal("Sobrepeso", detail!.Diagnostico);
+        Assert.Equal("Aumentar el consumo de verduras.", detail.Recomendaciones);
+        Assert.Equal(HttpStatusCode.OK, appointmentResponse.StatusCode);
+        Assert.Contains("\"consultationDetail\":{", appointmentContent);
+        Assert.Contains("\"diagnostico\":\"Sobrepeso\"", appointmentContent);
+    }
+
+    [Fact]
+    public async Task Patient_CannotSaveConsultationDetail()
+    {
+        var appointmentId = await SeedAppointmentAsync(
+            DateTime.UtcNow.AddDays(3));
+        using var client = CreateClient("patient-a", IdentityRoles.Patient);
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/appointments/{appointmentId}/consultation-detail",
+            new UpsertAppointmentConsultationDetailDto
             {
-                context.Appointments.AddRange(
-                    CreateAppointment(
-                        1,
-                        "Metzli"),
-
-                    CreateAppointment(
-                        2,
-                        "Marlon"));
-
-                await context.SaveChangesAsync();
+                Diagnostico = "Sobrepeso",
+                Recomendaciones = "Aumentar el consumo de verduras."
             });
 
-        // Act
-        var response =
-            await _client.GetAsync(
-                "/api/appointments");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
-
-        var appointments =
-            await response.Content
-                .ReadFromJsonAsync<List<AppointmentDto>>(JsonOptions);
-
-        Assert.NotNull(appointments);
-        Assert.Equal(2, appointments.Count);
-
-        Assert.Contains(
-            appointments,
-            a =>
-                a.Id == 1 &&
-                a.Nombre == "Metzli");
-
-        Assert.Contains(
-            appointments,
-            a =>
-                a.Id == 2 &&
-                a.Nombre == "Marlon");
-    }
-    
-    // GET /items/{id}` returns 200 with item 
-    [Fact]
-    public async Task GetAppointmentById_WhenAppointmentExists_Returns200WithAppointment()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                context.Appointments.Add(
-                    CreateAppointment(1, "Metzli"));
-
-                await context.SaveChangesAsync();
-            });
-
-        // Act
-        var response =
-            await _client.GetAsync(
-                "/api/appointments/1");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
-
-        var appointment =
-            await response.Content
-                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
-
-        Assert.NotNull(appointment);
-        Assert.Equal(1, appointment.Id);
-        Assert.Equal("Metzli", appointment.Nombre);
-    }
-    
-    // GET /items/{id}` returns 404 | Valid ID not found 
-    [Fact]
-    public async Task GetAppointmentById_WhenAppointmentDoesNotExist_Returns404()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        // Act
-        var response =
-            await _client.GetAsync(
-                "/api/appointments/999");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.NotFound,
-            response.StatusCode);
-    }
-    
-    // GET /items/{id}` returns 400 | Invalid ID format (non-alphanumeric) |
-    [Fact]
-    public async Task GetAppointmentById_WhenIdFormatIsInvalid_Returns400WithProblemDetails()
-    {
-        await _factory.ResetDatabaseAsync();
-
-        var response =
-            await _client.GetAsync(
-                "/api/appointments/abc");
-
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Contains("\"status\":400", body);
-        Assert.Contains("\"id\"", body);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
-    // GetBusy: return 200
-	    [Fact]
-    public async Task GetBusyAppointments_WhenAppointmentsExist_Returns200WithBusySlots()
+    private HttpClient CreateClient(string userId, params string[] roles)
     {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                context.Appointments.AddRange(
-                    new Appointment
-                    {
-                        Id = 1,
-                        Start = new DateTime(
-                            2026, 10, 20, 17, 0, 0,
-                            DateTimeKind.Utc),
-                        End = new DateTime(
-                            2026, 10, 20, 18, 0, 0,
-                            DateTimeKind.Utc),
-                        Nombre = "Metzli",
-                        Apellido = "Lopez",
-                        Email = "metzli@example.com",
-                        Numero = "6641234567",
-                        Motivo = "Consulta",
-                        Modalidad = Modalidad.Online,
-                        IsReserved = true
-                    },
-                    new Appointment
-                    {
-                        Id = 2,
-                        Start = new DateTime(
-                            2026, 10, 20, 19, 0, 0,
-                            DateTimeKind.Utc),
-                        End = new DateTime(
-                            2026, 10, 20, 20, 0, 0,
-                            DateTimeKind.Utc),
-                        Nombre = "Ana",
-                        Apellido = "Perez",
-                        Email = "ana@example.com",
-                        Numero = "6649999999",
-                        Motivo = "Seguimiento",
-                        Modalidad = Modalidad.Presencial,
-                        IsReserved = true
-                    });
-
-                await context.SaveChangesAsync();
-            });
-
-        var start =
-            "2026-10-20T00:00:00Z";
-
-        var end =
-            "2026-10-21T00:00:00Z";
-
-        // Act
-        var response =
-            await _client.GetAsync(
-                $"/api/appointments/busy?start={start}&end={end}");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Contains("\"id\":1", body);
-        Assert.Contains("\"id\":2", body);
-        Assert.Contains("\"title\":\"Reservado\"", body);
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.UserIdHeader, userId);
+        client.DefaultRequestHeaders.Add(TestAuthenticationHandler.RolesHeader, string.Join(',', roles));
+        return client;
     }
 
-    //GetBusy: No appointments returns empty array
-    [Fact]
-    public async Task GetBusyAppointments_WhenNoAppointmentsExist_Returns200WithEmptyArray()
+    private async Task<int> SeedAppointmentAsync(DateTime start)
     {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        // Act
-        var response =
-            await _client.GetAsync(
-                "/api/appointments/busy" +
-                "?start=2026-10-20T00:00:00Z" +
-                "&end=2026-10-21T00:00:00Z");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Equal("[]", body);
-    }
-
-    // Enum as string
-    [Fact]
-    public async Task AppointmentResponse_SerializesModalidadAsString()
-    {
-        await _factory.ResetDatabaseAsync();
+        await SeedProfilesAsync();
+        var appointmentId = 0;
 
         await _factory.ExecuteDbContextAsync(async context =>
         {
-            context.Appointments.Add(
-                new Appointment
-                {
-                    Id = 1,
-                    Start = new DateTime(
-                        2026, 10, 20, 17, 0, 0,
-                        DateTimeKind.Utc),
-
-                    End = new DateTime(
-                        2026, 10, 20, 18, 0, 0,
-                        DateTimeKind.Utc),
-
-                    Nombre = "Metzli",
-                    Apellido = "Lopez",
-                    Email = "metzli@example.com",
-                    Numero = "6641234567",
-                    Motivo = "Consulta",
-                    Modalidad = Modalidad.Online
-                });
-
+            var patient = context.Patients.Single(profile => profile.UserId == "patient-a");
+            var doctor = context.Doctors.Single(profile => profile.UserId == "doctor-user");
+            var appointment = Appointment.Create(
+                patient.Id,
+                doctor.Id,
+                start,
+                start.AddHours(1),
+                "Consulta",
+                Modalidad.Online);
+            context.Appointments.Add(appointment);
             await context.SaveChangesAsync();
+            appointmentId = appointment.Id;
         });
 
-        var response =
-            await _client.GetAsync(
-                "/api/appointments/1");
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Contains(
-            "\"modalidad\":\"Online\"",
-            body);
+        return appointmentId;
     }
 
-    
-    // POST /items` returns 201 + Location | Valid CreateItemDto 
-    [Fact]
-    public async Task PostAppointment_WithValidRequest_Returns201WithLocation()
+    private async Task SeedProfilesAsync()
     {
-        // Arrange
         await _factory.ResetDatabaseAsync();
-
-        var request = new CreateAppointmentDto
+        await _factory.ExecuteDbContextAsync(async context =>
         {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        // Act
-        var response =
-            await _client.PostAsJsonAsync(
-                "/api/appointments",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.Created,
-            response.StatusCode);
-
-        Assert.NotNull(response.Headers.Location);
-
-        Assert.StartsWith(
-            "/api/appointments/",
-            response.Headers.Location!.ToString());
-
-        Assert.Equal(
-            "application/json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var appointment =
-            await response.Content
-                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
-
-        Assert.NotNull(appointment);
-        Assert.True(appointment.Id > 0);
-        Assert.Equal("Metzli", appointment.Nombre);
-        Assert.Equal(Modalidad.Online, appointment.Modalidad);
-    }
-    
-    // POST /items` returns 400 | Missing/invalid fields, duplicate constraint violations 
-    [Fact]
-    public async Task PostAppointment_WithInvalidRequest_Returns400WithProblemDetails()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        var request = new CreateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "",
-            Apellido = "",
-            Email = "correo-invalido",
-            Numero = "",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online
-        };
-
-        // Act
-        var response =
-            await _client.PostAsJsonAsync(
-                "/api/appointments",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Contains(
-            "\"title\":\"Validation Failed\"",
-            body);
-
-        Assert.Contains(
-            "\"status\":400",
-            body);
-
-        Assert.Contains(
-            "\"Nombre\"",
-            body);
-
-        Assert.Contains(
-            "\"Email\"",
-            body);
-
-        Assert.Contains(
-            "\"End\"",
-            body);
-    }
-    
-    // POST /items` returns 420 | Overlapping
-    [Fact]
-    public async Task PostAppointment_WhenSlotOverlaps_Returns422()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
+            context.Patients.AddRange(
+                new Patient
+                {
+                    UserId = "patient-a",
+                    Nombre = "Ana",
+                    Apellido = "Pérez",
+                    Numero = "6641234567"
+                },
+                new Patient
+                {
+                    UserId = "patient-b",
+                    Nombre = "Luis",
+                    Apellido = "García",
+                    Numero = "6647654321"
+                });
+            context.Doctors.Add(new Doctor
             {
-                context.Appointments.Add(
-                    CreateAppointment(1, "Existing"));
-
-                await context.SaveChangesAsync();
+                UserId = "doctor-user",
+                Email = "doctora@example.com"
             });
+            await context.SaveChangesAsync();
+        });
+    }
 
-        var request = new CreateAppointmentDto
+    private static CreateAppointmentDto CreateRequest(DateTime start) =>
+        new()
         {
-            Start = new DateTime(
-                2026, 10, 15, 17, 30, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 15, 18, 30, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            Email = "ana@example.com",
-            Numero = "6649999999",
+            Start = start,
+            End = start.AddHours(1),
             Motivo = "Consulta",
             Modalidad = Modalidad.Online
         };
 
-        // Act
-        var response =
-            await _client.PostAsJsonAsync(
-                "/api/appointments",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.UnprocessableEntity,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-    }
-    
-    // PUT /items/{id}` returns 200 | Valid UpdateItemDto
-    [Fact]
-    public async Task PutAppointment_WithValidRequest_Returns200()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                context.Appointments.Add(
-                    CreateAppointment(1, "Metzli"));
-
-                await context.SaveChangesAsync();
-            });
-
-        var request = new UpdateAppointmentDto
+    private static UpdateAppointmentDto CreateUpdateRequest(DateTime start) =>
+        new()
         {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            NombrePaciente = "Paciente actualizado",
-            Email = "ana@example.com",
-            Numero = "6649999999",
+            Start = start,
+            End = start.AddHours(1),
             Motivo = "Seguimiento",
             Modalidad = Modalidad.Presencial
         };
-
-        // Act
-        var response =
-            await _client.PutAsJsonAsync(
-                "/api/appointments/1",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.OK,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var appointment =
-            await response.Content
-                .ReadFromJsonAsync<AppointmentDto>(JsonOptions);
-
-        Assert.NotNull(appointment);
-        Assert.Equal(1, appointment.Id);
-        Assert.Equal("Ana", appointment.Nombre);
-        Assert.Equal("Perez", appointment.Apellido);
-        Assert.Equal("Paciente actualizado", appointment.NombrePaciente);
-        Assert.Equal("ana@example.com", appointment.Email);
-        Assert.Equal("6649999999", appointment.Numero);
-        Assert.Equal("Seguimiento", appointment.Motivo);
-        Assert.Equal(Modalidad.Presencial, appointment.Modalidad);
-        Assert.Equal(request.Start, appointment.Start);
-        Assert.Equal(request.End, appointment.End);
-    }
-    
-    // PUT /items/{id}` returns 404 | Valid ID not found
-    [Fact]
-    public async Task PutAppointment_WhenAppointmentDoesNotExist_Returns404()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            NombrePaciente = null,
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Seguimiento",
-            Modalidad = Modalidad.Online
-        };
-
-        // Act
-        var response =
-            await _client.PutAsJsonAsync(
-                "/api/appointments/999",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.NotFound,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-    }
-    
-    // PUT /items/{id}` returns 400 | Invalid request
-    [Fact]
-    public async Task PutAppointment_WithInvalidRequest_Returns400WithProblemDetails()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                context.Appointments.Add(
-                    CreateAppointment(1, "Metzli"));
-
-                await context.SaveChangesAsync();
-            });
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "",
-            Apellido = "",
-            NombrePaciente = null,
-            Email = "correo-invalido",
-            Numero = "",
-            Motivo = "Prueba",
-            Modalidad = Modalidad.Online
-        };
-
-        // Act
-        var response =
-            await _client.PutAsJsonAsync(
-                "/api/appointments/1",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-
-        var body =
-            await response.Content.ReadAsStringAsync();
-
-        Assert.Contains(
-            "\"title\":\"Validation Failed\"",
-            body);
-
-        Assert.Contains(
-            "\"status\":400",
-            body);
-
-        Assert.Contains(
-            "\"Nombre\"",
-            body);
-
-        Assert.Contains(
-            "\"Email\"",
-            body);
-
-        Assert.Contains(
-            "\"End\"",
-            body);
-    }
-    
-    // PUT /items/{id}` returns 422 | Overlapping 
-    [Fact]
-    public async Task PutAppointment_WhenSlotOverlaps_Returns422()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                var appointmentToUpdate =
-                    CreateAppointment(1, "Metzli");
-
-                appointmentToUpdate.Start =
-                    new DateTime(
-                        2026, 10, 20, 15, 0, 0,
-                        DateTimeKind.Utc);
-
-                appointmentToUpdate.End =
-                    new DateTime(
-                        2026, 10, 20, 16, 0, 0,
-                        DateTimeKind.Utc);
-
-                var conflictingAppointment =
-                    CreateAppointment(2, "Ana");
-
-                conflictingAppointment.Start =
-                    new DateTime(
-                        2026, 10, 20, 17, 0, 0,
-                        DateTimeKind.Utc);
-
-                conflictingAppointment.End =
-                    new DateTime(
-                        2026, 10, 20, 18, 0, 0,
-                        DateTimeKind.Utc);
-
-                context.Appointments.AddRange(
-                    appointmentToUpdate,
-                    conflictingAppointment);
-
-                await context.SaveChangesAsync();
-            });
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 30, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 30, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Metzli",
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = "metzli@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta actualizada",
-            Modalidad = Modalidad.Online
-        };
-
-        // Act
-        var response =
-            await _client.PutAsJsonAsync(
-                "/api/appointments/1",
-                request);
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.UnprocessableEntity,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-    }
-    
-    // PUT /items/{id}` returns 400 | Invalid format
-    [Fact]
-    public async Task PutAppointment_WhenIdFormatIsInvalid_Returns400()
-    {
-        await _factory.ResetDatabaseAsync();
-
-        var request = new UpdateAppointmentDto
-        {
-            Start = new DateTime(
-                2026, 10, 20, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 20, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = "Ana",
-            Apellido = "Perez",
-            Email = "ana@example.com",
-            Numero = "6649999999",
-            Motivo = "Prueba",
-            Modalidad = Modalidad.Online
-        };
-
-        var response =
-            await _client.PutAsJsonAsync(
-                "/api/appointments/abc",
-                request);
-
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            response.StatusCode);
-    }
-    
-    // DELETE /items/{id}` returns 204 | Valid ID exists
-    [Fact]
-    public async Task DeleteAppointment_WhenAppointmentExists_Returns204()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                context.Appointments.Add(
-                    CreateAppointment(1, "Metzli"));
-
-                await context.SaveChangesAsync();
-            });
-
-        // Act
-        var response =
-            await _client.DeleteAsync(
-                "/api/appointments/1");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.NoContent,
-            response.StatusCode);
-
-        Assert.Equal(
-            0,
-            response.Content.Headers.ContentLength ?? 0);
-
-        await _factory.ExecuteDbContextAsync(
-            async context =>
-            {
-                var exists =
-                    await context.Appointments
-                        .AnyAsync(a => a.Id == 1);
-
-                Assert.False(exists);
-            });
-    }
-    
-    // DELETE /items/{id}` returns 404 | Valid ID not found
-    [Fact]
-    public async Task DeleteAppointment_WhenAppointmentDoesNotExist_Returns404()
-    {
-        // Arrange
-        await _factory.ResetDatabaseAsync();
-
-        // Act
-        var response =
-            await _client.DeleteAsync(
-                "/api/appointments/999");
-
-        // Assert
-        Assert.Equal(
-            HttpStatusCode.NotFound,
-            response.StatusCode);
-
-        Assert.Equal(
-            "application/problem+json",
-            response.Content.Headers.ContentType?.MediaType);
-    }
-    
-    // DELETE /items/{id}` returns 400 | Invalid format
-    [Fact]
-    public async Task DeleteAppointment_WhenIdFormatIsInvalid_Returns400()
-    {
-        await _factory.ResetDatabaseAsync();
-
-        var response =
-            await _client.DeleteAsync(
-                "/api/appointments/abc");
-
-        Assert.Equal(
-            HttpStatusCode.BadRequest,
-            response.StatusCode);
-    }
-    
-    // Helper
-    private static Appointment CreateAppointment(
-        int id,
-        string nombre,
-        string? userId = null)
-    {
-        return new Appointment
-        {
-            Id = id,
-
-            Start = new DateTime(
-                2026, 10, 15, 17, 0, 0,
-                DateTimeKind.Utc),
-
-            End = new DateTime(
-                2026, 10, 15, 18, 0, 0,
-                DateTimeKind.Utc),
-
-            Nombre = nombre,
-            Apellido = "Lopez",
-            NombrePaciente = null,
-            Email = $"{nombre.ToLower()}@example.com",
-            Numero = "6641234567",
-            Motivo = "Consulta",
-            Modalidad = Modalidad.Online,
-            IsReserved = true,
-            UserId = userId
-        };
-    }
 }
-
-

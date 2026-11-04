@@ -15,24 +15,38 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<List<Appointment>> GetAllAsync()
     {
-        return await _context.Appointments
+        return await WithProfiles()
             .ToListAsync();
     }
-    // public Task<Appointment?> GetByIdAsync(int id);
 
+    public async Task<List<Appointment>> GetByPatientIdAsync(int patientId)
+    {
+        return await WithProfiles()
+            .Where(appointment => appointment.PatientId == patientId)
+            .ToListAsync();
+    }
+
+    public async Task<List<Appointment>> GetByDoctorIdAsync(int doctorId)
+    {
+        return await WithProfiles()
+            .Where(appointment => appointment.DoctorId == doctorId)
+            .ToListAsync();
+    }
 
     public async Task<List<Appointment>> GetBusyAsync(
         DateTime start,
         DateTime end)
     {
         return await _context.Appointments
+            .Include(a => a.Patient)
+            .Where(a => a.Status != AppointmentStatus.Cancelada)
             .Where(a => a.Start < end && a.End > start)
             .ToListAsync();
     }
 
     public async Task<Appointment?> GetByIdAsync(int id)
     {
-        return await _context.Appointments
+        return await WithProfiles()
             .FirstOrDefaultAsync(a => a.Id == id);
     }
 
@@ -41,7 +55,10 @@ public class AppointmentRepository : IAppointmentRepository
         DateTime end)
     {
         return await _context.Appointments
-            .AnyAsync(a => a.Start < end && a.End > start);
+            .AnyAsync(a =>
+                a.Status != AppointmentStatus.Cancelada &&
+                a.Start < end &&
+                a.End > start);
     }
     
     public async Task<bool> HasOverlapAsync(
@@ -52,6 +69,7 @@ public class AppointmentRepository : IAppointmentRepository
         return await _context.Appointments
             .AnyAsync(a =>
                 a.Id != excludeAppointmentId &&
+                a.Status != AppointmentStatus.Cancelada &&
                 a.Start < end &&
                 a.End > start);
     }
@@ -75,9 +93,11 @@ public class AppointmentRepository : IAppointmentRepository
         return appointment;
     }
     
-    public async Task DeleteAsync(Appointment appointment)
+    private IQueryable<Appointment> WithProfiles()
     {
-        _context.Appointments.Remove(appointment);
-        await _context.SaveChangesAsync();
+        return _context.Appointments
+            .Include(appointment => appointment.Patient)
+            .Include(appointment => appointment.Doctor)
+            .Include(appointment => appointment.ConsultationDetail);
     }
 }

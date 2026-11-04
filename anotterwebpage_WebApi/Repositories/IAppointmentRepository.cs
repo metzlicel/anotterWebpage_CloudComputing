@@ -5,6 +5,11 @@ namespace anotterwebpage_WebApi.Repositories;
 public interface IAppointmentRepository
 {
     Task<List<Appointment>> GetAllAsync();
+
+    Task<List<Appointment>> GetByPatientIdAsync(int patientId);
+
+    Task<List<Appointment>> GetByDoctorIdAsync(int doctorId);
+
     Task<List<Appointment>> GetBusyAsync(
         DateTime start,
         DateTime end);
@@ -21,6 +26,4 @@ public interface IAppointmentRepository
     Task<Appointment> CreateAsync(Appointment appointment);
     
     Task<Appointment> UpdateAsync(Appointment appointment);
-    
-    Task DeleteAsync(Appointment appointment);
 }

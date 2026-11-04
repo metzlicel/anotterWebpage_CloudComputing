@@ -2,9 +2,11 @@ using anotterwebpage.Api.Tests.Fakes;
 using anotterwebpage_WebApi.Data;
 using anotterwebpage_WebApi.Services;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -19,8 +21,24 @@ public class AnotterwebpageApiTests
     protected override void ConfigureWebHost(
         IWebHostBuilder builder)
     {
+        builder.ConfigureAppConfiguration((_, configuration) =>
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DoctorBootstrap:UserId"] = string.Empty,
+                ["DoctorBootstrap:Email"] = string.Empty
+            }));
+
         builder.ConfigureServices(services =>
         {
+            services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
+                    options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
+                })
+                .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                    TestAuthenticationHandler.SchemeName,
+                    _ => { });
+
             // Eliminar completamente la configuración real de PostgreSQL
             services.RemoveAll<
                 DbContextOptions<ApplicationDbContext>>();
@@ -44,6 +62,11 @@ public class AnotterwebpageApiTests
             services.AddSingleton<
                 IEmailService,
                 FakeEmailService>();
+
+            services.RemoveAll<IAppointmentNotificationFactory>();
+            services.AddSingleton<
+                IAppointmentNotificationFactory,
+                FakeAppointmentNotificationFactory>();
         });
     }
 
